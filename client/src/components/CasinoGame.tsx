@@ -2,48 +2,38 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { useWallet } from '@/hooks/useWallet';
-import { initCasino, CasinoApp } from '@/game/CasinoWorld';
+import { createCasino, CasinoScene } from '@/game/CasinoScene';
 import { BASE_SEPOLIA_CHAIN_ID } from '@/lib/contracts';
 
 export default function CasinoGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const appRef = useRef<CasinoApp | null>(null);
+  const sceneRef = useRef<CasinoScene | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
-  const [interactionPrompt, setInteractionPrompt] = useState('');
   const wallet = useWallet();
 
-  // Initialize PlayCanvas engine
+  // Initialize Three.js scene
   useEffect(() => {
-    if (!canvasRef.current || appRef.current) return;
+    if (!canvasRef.current || sceneRef.current) return;
 
-    initCasino(canvasRef.current).then((app) => {
-      appRef.current = app;
+    try {
+      sceneRef.current = createCasino(canvasRef.current);
       setLoaded(true);
+    } catch (err) {
+      console.error('Failed to init casino scene:', err);
+    }
 
-      // Callback when player looks at something interactable
-      app.onInteractionAvailable = (prompt: string) => {
-        setInteractionPrompt(prompt);
-      };
-
-      app.onInteractionEnd = () => {
-        setInteractionPrompt('');
-      };
-    });
+    const onLockChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setPointerLocked(detail);
+    };
+    window.addEventListener('casino:pointerlock', onLockChange);
 
     return () => {
-      appRef.current?.destroy();
-      appRef.current = null;
+      window.removeEventListener('casino:pointerlock', onLockChange);
+      sceneRef.current?.dispose();
+      sceneRef.current = null;
     };
-  }, []);
-
-  // Pointer lock handling
-  useEffect(() => {
-    const onLockChange = () => {
-      setPointerLocked(document.pointerLockElement === canvasRef.current);
-    };
-    document.addEventListener('pointerlockchange', onLockChange);
-    return () => document.removeEventListener('pointerlockchange', onLockChange);
   }, []);
 
   const handleCanvasClick = () => {
@@ -53,19 +43,19 @@ export default function CasinoGame() {
   const isWrongChain = wallet.chainId !== null && wallet.chainId !== BASE_SEPOLIA_CHAIN_ID;
 
   return (
-    <div id="app-container" style={{ width: '100vw', height: '100vh' }}>
-      {/* PlayCanvas Canvas */}
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#0a0608' }}>
+      {/* Three.js Canvas */}
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block' }}
+        style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer' }}
       />
 
       {/* UI Overlay */}
       <div className="casino-ui">
-        {/* Top Bar — Wallet */}
+        {/* Top Bar */}
         <div className="top-bar">
-          <div style={{ fontWeight: 800, fontSize: 20, color: '#ffd700', letterSpacing: 1 }}>
-            🎰 ONCHAIN CASINO
+          <div style={{ fontWeight: 800, fontSize: 22, color: '#ffd700', letterSpacing: 2, textShadow: '0 0 20px rgba(255,215,0,0.5)' }}>
+            💎 DIAMOND CASINO
           </div>
 
           {wallet.address ? (
@@ -88,31 +78,26 @@ export default function CasinoGame() {
               onClick={wallet.connect}
               disabled={wallet.connecting}
             >
-              {wallet.connecting ? 'Connecting...' : 'Connect Wallet'}
+              {wallet.connecting ? 'Connecting...' : '🦊 Connect Wallet'}
             </button>
           )}
         </div>
-
-        {/* Crosshair (only when pointer locked) */}
-        {pointerLocked && <div className="crosshair" />}
 
         {/* Click to play overlay */}
         {loaded && !pointerLocked && (
           <div className="click-to-play" onClick={handleCanvasClick}>
             <div className="click-to-play-text">
-              {wallet.address ? 'Click to play' : 'Connect wallet, then click to play'}
+              <span style={{ fontSize: 28, fontWeight: 700, color: '#ffd700' }}>CLICK TO ENTER</span>
               <br />
-              <span style={{ fontSize: 13, color: '#666' }}>
-                WASD to move • Mouse to look • ESC to release
+              <span style={{ fontSize: 14, color: '#888' }}>
+                WASD to walk • Mouse to look • ESC to release mouse
               </span>
             </div>
           </div>
         )}
 
-        {/* Interaction prompt */}
-        <div className={`interaction-prompt ${interactionPrompt ? 'visible' : ''}`}>
-          {interactionPrompt}
-        </div>
+        {/* Crosshair when locked */}
+        {pointerLocked && <div className="crosshair" />}
 
         {/* Error toast */}
         {wallet.error && (
