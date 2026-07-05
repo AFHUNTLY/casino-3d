@@ -482,12 +482,11 @@ window.addEventListener('resize', () => {
 
 // ===== START =====
 app.start();
+console.log('[Casino] App started successfully');
 
-// Hide loading
-setTimeout(() => {
-  const loading = document.getElementById('loading');
-  if (loading) loading.style.display = 'none';
-}, 1500);
+// Hide loading after app starts
+const loading = document.getElementById('loading');
+if (loading) loading.style.display = 'none';
 
 // ===== WALLET CONNECT =====
 document.getElementById('connectBtn').addEventListener('click', async () => {
