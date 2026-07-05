@@ -1,32 +1,38 @@
 'use client';
 
-import dynamic from 'next/dynamic';
-import { useState, useEffect } from 'react';
-
-const CasinoGame = dynamic(() => import('@/components/CasinoGame'), {
-  ssr: false,
-  loading: () => (
-    <div className="loading-screen">
-      <div className="loading-title">ONCHAIN CASINO</div>
-      <div className="loading-subtitle">Loading 3D environment...</div>
-      <div className="loading-spinner" />
-    </div>
-  ),
-});
+import { useEffect } from 'react';
 
 export default function HomePage() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    // Redirect to the standalone PlayCanvas casino
+    window.location.href = '/casino.html';
+  }, []);
 
-  if (!mounted) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-title">ONCHAIN CASINO</div>
-        <div className="loading-subtitle">Initializing...</div>
-        <div className="loading-spinner" />
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      background: 'radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 100%)',
+      color: '#ffd700',
+      fontFamily: 'system-ui, sans-serif',
+    }}>
+      <div style={{ fontSize: 48, fontWeight: 800, marginBottom: 20 }}>
+        💎 DIAMOND CASINO
       </div>
-    );
-  }
-
-  return <CasinoGame />;
+      <div style={{ color: '#888' }}>Loading 3D environment...</div>
+      <div style={{
+        marginTop: 30,
+        width: 40,
+        height: 40,
+        border: '3px solid rgba(255,215,0,0.2)',
+        borderTopColor: '#ffd700',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 }

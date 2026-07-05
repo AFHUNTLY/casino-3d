@@ -2,12 +2,8 @@
 const nextConfig = {
   output: 'export',
   images: { unoptimized: true },
+  // Serve static files from public/
   webpack: (config) => {
-    // PlayCanvas engine needs these
-    config.module.rules.push({
-      test: /\.(glb|gltf)$/,
-      type: 'asset/resource',
-    });
     return config;
   },
 };

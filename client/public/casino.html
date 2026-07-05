@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Diamond Casino 3D</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0608;font-family:system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%}
+#ui{position:fixed;inset:0;pointer-events:none;z-index:100}
+#ui>*{pointer-events:auto}
+.topbar{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:linear-gradient(180deg,rgba(0,0,0,.7),transparent);z-index:101}
+.logo{font-weight:800;font-size:22px;color:#ffd700;letter-spacing:2px;text-shadow:0 0 20px rgba(255,215,0,.5)}
+.wallet{display:flex;align-items:center;gap:12px;background:rgba(20,20,30,.85);border:1px solid rgba(255,215,0,.25);border-radius:8px;padding:8px 16px;backdrop-filter:blur(10px)}
+.wallet-addr{font-family:monospace;font-size:13px;color:#aaa}
+.wallet-bal{font-size:15px;font-weight:700;color:#ffd700}
+.connect-btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:11px 26px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
+.connect-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(99,102,241,.4)}
+.crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:16px;height:16px;pointer-events:none;z-index:50}
+.crosshair::before,.crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.5)}
+.crosshair::before{width:2px;height:100%;left:50%;transform:translateX(-50%)}
+.crosshair::after{width:100%;height:2px;top:50%;transform:translateY(-50%)}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);cursor:pointer;backdrop-filter:blur(2px);z-index:200}
+#overlay-box{background:rgba(20,20,30,.9);border:1px solid rgba(255,215,0,.25);border-radius:12px;padding:24px 40px;text-align:center}
+#overlay-title{font-size:28px;font-weight:700;color:#ffd700;display:block}
+#overlay-hint{font-size:14px;color:#888;margin-top:8px;display:block}
+#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#1a1a2e,#0a0a0a);z-index:999}
+#loading-title{font-size:48px;font-weight:800;background:linear-gradient(135deg,#ffd700,#ff6b6b,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;margin-bottom:16px}
+#loading-sub{color:#888;font-size:16px}
+#spinner{margin-top:24px;width:36px;height:36px;border:3px solid rgba(255,215,0,.2);border-top-color:#ffd700;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<canvas id="app"></canvas>
+
+<div id="ui">
+<div class="topbar">
+<div class="logo">💎 DIAMOND CASINO</div>
+<button class="connect-btn" id="connectBtn">🦊 Connect Wallet</button>
+<div class="wallet" id="walletDisplay" style="display:none">
+<span class="wallet-addr" id="walletAddr"></span>
+<span class="wallet-bal" id="walletBal"></span>
+</div>
+</div>
+<div class="crosshair" id="crosshair" style="display:none"></div>
+<div id="overlay">
+<div id="overlay-box">
+<span id="overlay-title">CLICK TO ENTER</span>
+<span id="overlay-hint">WASD to walk • Mouse to look • ESC to release • Shift to sprint</span>
+</div>
+</div>
+</div>
+
+<div id="loading">
+<div id="loading-title">DIAMOND CASINO</div>
+<div id="loading-sub">Loading 3D environment...</div>
+<div id="spinner"></div>
+</div>
+
+<script type="importmap">
+{ "imports": { "playcanvas": "https://cdn.jsdelivr.net/npm/playcanvas@2.20.5/build/playcanvas/src/index.js" } }
+</script>
+
+<script type="module">
+import * as pc from 'playcanvas';
+
+// ===== INIT =====
+const canvas = document.getElementById('app');
+const app = new pc.Application(canvas);
+const opts = new pc.AppOptions();
+opts.keyboard = new pc.Keyboard(window);
+opts.mouse = new pc.Mouse(canvas);
+app.init(opts);
+app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
+app.setCanvasResolution(pc.RESOLUTION_AUTO);
+app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio, 2);
+
+// Tone mapping for realistic lighting
+app.scene.toneMapping = pc.TONEMAP_ACES;
+app.scene.exposure = 1.2;
+
+// Fog for atmosphere
+app.scene.fog = pc.FOG_EXP2;
+app.scene.fogColor = new pc.Color(0.04, 0.02, 0.06);
+app.scene.fogDensity = 0.015;
+
+// Ambient
+app.scene.ambientLight = new pc.Color(0.15, 0.1, 0.08);
+
+// ===== HELPER FUNCTIONS =====
+function makeMat(color, emissive, emissiveInt, metalness, roughness) {
+  const m = new pc.StandardMaterial();
+  m.diffuse = new pc.Color(color[0], color[1], color[2]);
+  if (emissive) {
+    m.emissive = new pc.Color(emissive[0], emissive[1], emissive[2]);
+    m.emissiveIntensity = emissiveInt || 1;
+  }
+  m.metalness = metalness ?? 0;
+  m.shininess = roughness ? (100 - roughness * 100) : 50;
+  m.update();
+  return m;
+}
+
+function rgb(hex) {
+  return [((hex>>16)&0xFF)/255, ((hex>>8)&0xFF)/255, (hex&0xFF)/255];
+}
+
+function makeBox(name, pos, scale, mat) {
+  const e = new pc.Entity(name);
+  e.addComponent('model', { type: 'box' });
+  e.setLocalPosition(pos[0], pos[1], pos[2]);
+  e.setLocalScale(scale[0], scale[1], scale[2]);
+  if (mat) {
+    const mi = e.model.meshInstances[0];
+    if (mi) mi.material = mat;
+  }
+  app.root.addChild(e);
+  return e;
+}
+
+function makeCylinder(name, pos, scale, mat) {
+  const e = new pc.Entity(name);
+  e.addComponent('model', { type: 'cylinder' });
+  e.setLocalPosition(pos[0], pos[1], pos[2]);
+  e.setLocalScale(scale[0], scale[1], scale[2]);
+  if (mat) { const mi = e.model.meshInstances[0]; if (mi) mi.material = mat; }
+  app.root.addChild(e);
+  return e;
+}
+
+function makeSphere(name, pos, scale, mat) {
+  const e = new pc.Entity(name);
+  e.addComponent('model', { type: 'sphere' });
+  e.setLocalPosition(pos[0], pos[1], pos[2]);
+  e.setLocalScale(scale[0], scale[1], scale[2]);
+  if (mat) { const mi = e.model.meshInstances[0]; if (mi) mi.material = mat; }
+  app.root.addChild(e);
+  return e;
+}
+
+function makeTorus(name, pos, scale, mat, rot) {
+  const e = new pc.Entity(name);
+  e.addComponent('model', { type: 'torus' });
+  e.setLocalPosition(pos[0], pos[1], pos[2]);
+  e.setLocalScale(scale[0], scale[1], scale[2]);
+  if (rot) e.setLocalEulerAngles(rot[0], rot[1], rot[2]);
+  if (mat) { const mi = e.model.meshInstances[0]; if (mi) mi.material = mat; }
+  app.root.addChild(e);
+  return e;
+}
+
+// ===== MATERIALS =====
+const matMarbleWhite = makeMat(rgb(0xe8e0d5), null, 0, 0.1, 0.2);
+const matMarbleBlack = makeMat(rgb(0x1a1614), null, 0, 0.1, 0.2);
+const matWall = makeMat(rgb(0x2a1a12), null, 0, 0, 0.8);
+const matCeiling = makeMat(rgb(0x0d0806), null, 0, 0, 0.9);
+const matGold = makeMat(rgb(0xffd700), rgb(0x553300), 0.4, 0.9, 0.2);
+const matRedCarpet = makeMat(rgb(0x4a0808), null, 0, 0, 0.95);
+const matFelt = makeMat(rgb(0x0a3a1a), null, 0, 0, 0.9);
+const matDarkWood = makeMat(rgb(0x1a0e08), null, 0, 0.2, 0.6);
+const matGlowRed = makeMat(rgb(0x440000), rgb(0xff0000), 2.5, 0, 0.3);
+const matGlowBlue = makeMat(rgb(0x000044), rgb(0x0044ff), 2.5, 0, 0.3);
+const matGlowGold = makeMat(rgb(0x442200), rgb(0xffaa00), 2.5, 0, 0.3);
+const matGlowPink = makeMat(rgb(0x440022), rgb(0xff0088), 2.5, 0, 0.3);
+const matGlowGreen = makeMat(rgb(0x004400), rgb(0x00ff44), 2.5, 0, 0.3);
+const matGlowWhite = makeMat(rgb(0x222222), rgb(0xffffff), 2.0, 0, 0.3);
+
+const neonMats = [matGlowRed, matGlowBlue, matGlowGold, matGlowPink];
+const slotCabinets = [
+  { body: makeMat(rgb(0x2a0404), null, 0, 0.5, 0.4), screen: makeMat(rgb(0x110000), rgb(0xff0000), 2.5, 0, 0.2) },
+  { body: makeMat(rgb(0x04081a), null, 0, 0.5, 0.4), screen: makeMat(rgb(0x000011), rgb(0x00aaff), 2.5, 0, 0.2) },
+  { body: makeMat(rgb(0x1a1604), null, 0, 0.5, 0.4), screen: makeMat(rgb(0x111100), rgb(0xffd700), 2.5, 0, 0.2) },
+  { body: makeMat(rgb(0x1a0414), null, 0, 0.5, 0.4), screen: makeMat(rgb(0x110011), rgb(0xff00ff), 2.5, 0, 0.2) },
+];
+
+// ===== ROOM DIMENSIONS =====
+const RW = 60, RH = 14, RD = 60;
+
+// ===== FLOOR (checkered marble) =====
+const tileSize = 5;
+for (let x = -RW/2; x < RW/2; x += tileSize) {
+  for (let z = -RD/2; z < RD/2; z += tileSize) {
+    const isWhite = (((x+RW/2)/tileSize) + ((z+RD/2)/tileSize)) % 2 === 0;
+    makeBox('tile', [x+tileSize/2, 0, z+tileSize/2], [tileSize, 0.1, tileSize], isWhite ? matMarbleWhite : matMarbleBlack);
+  }
+}
+
+// Red carpet with gold borders
+makeBox('carpet', [0, 0.06, 0], [8, 0.04, RD-4], matRedCarpet);
+makeBox('carpet-border-l', [-4.1, 0.07, 0], [0.4, 0.05, RD-4], matGold);
+makeBox('carpet-border-r', [4.1, 0.07, 0], [0.4, 0.05, RD-4], matGold);
+
+// ===== WALLS =====
+makeBox('wall-back', [0, RH/2, -RD/2], [RW, RH, 0.4], matWall);
+makeBox('wall-front', [0, RH/2, RD/2], [RW, RH, 0.4], matWall);
+makeBox('wall-left', [-RW/2, RH/2, 0], [0.4, RH, RD], matWall);
+makeBox('wall-right', [RW/2, RH/2, 0], [0.4, RH, RD], matWall);
+
+// Ceiling
+makeBox('ceiling', [0, RH, 0], [RW, 0.3, RD], matCeiling);
+
+// Gold trim at top of walls
+for (const [wallY] of [[RH - 1.5]]) {
+  makeBox('trim-back', [0, wallY, -RD/2 + 0.3], [RW, 0.3, 0.5], matGold);
+  makeBox('trim-front', [0, wallY, RD/2 - 0.3], [RW, 0.3, 0.5], matGold);
+  makeBox('trim-left', [-RW/2 + 0.3, wallY, 0], [0.5, 0.3, RD], matGold);
+  makeBox('trim-right', [RW/2 - 0.3, wallY, 0], [0.5, 0.3, RD], matGold);
+}
+
+// ===== NEON WALL STRIPS =====
+for (let i = 0; i < 12; i++) {
+  makeBox(`neon-back-${i}`, [-26 + i * 5, 9, -RD/2 + 0.35], [3, 0.12, 0.12], neonMats[i % 4]);
+  makeBox(`neon-left-${i}`, [-RW/2 + 0.35, 9, -26 + i * 5], [0.12, 0.12, 3], neonMats[(i+1) % 4]);
+  makeBox(`neon-right-${i}`, [RW/2 - 0.35, 9, -26 + i * 5], [0.12, 0.12, 3], neonMats[(i+2) % 4]);
+}
+
+// ===== CHANDELIERS =====
+for (const [cx, cz] of [[-15,-15],[15,-15],[-15,15],[15,15],[0,0]]) {
+  makeCylinder('chain', [cx, RH - 2, cz], [0.08, 3, 0.08], matGold);
+  const bulb = makeSphere('chandelier', [cx, RH - 4, cz], [1.2, 1.2, 1.2], matGlowGold);
+  for (let r = 0; r < 3; r++) {
+    makeTorus('ch-ring', [cx, RH - 4 - r * 0.25, cz], [1 + r * 0.5, 1, 1 + r * 0.5], matGold, [90, 0, 0]);
+  }
+  // Point light (no shadows for performance)
+  const cl = new pc.Entity('ch-light');
+  cl.addComponent('light', { type: 'point', color: new pc.Color(1, 0.85, 0.5), intensity: 3, range: 35, castShadows: false });
+  cl.setLocalPosition(cx, RH - 4, cz);
+  app.root.addChild(cl);
+}
+
+// ===== SLOT MACHINES =====
+function makeSlotMachine(x, z, rotY, variant) {
+  const cab = slotCabinets[variant % 4];
+  const group = new pc.Entity('slot');
+  group.setLocalPosition(x, 0, z);
+  group.setLocalEulerAngles(0, rotY, 0);
+
+  // Cabinet
+  const body = makeBox('cab', [0, 1.6, 0], [1.4, 3.2, 1.1], cab.body);
+  group.addChild(body);
+
+  // Crown
+  group.addChild(makeBox('crown', [0, 3.3, 0], [1.5, 0.3, 1.2], matGold));
+  // Screen
+  group.addChild(makeBox('screen', [0, 2.3, 0.58], [1.0, 0.8, 0.04], cab.screen));
+  // Reels (3 glowing)
+  for (let r = 0; r < 3; r++) {
+    group.addChild(makeBox(`reel-${r}`, [-0.3 + r * 0.3, 1.5, 0.59], [0.22, 0.5, 0.03], neonMats[r % 4]));
+  }
+  // Coin slot
+  group.addChild(makeBox('coin', [0, 0.9, 0.58], [0.35, 0.04, 0.04], matGold));
+  // Base
+  group.addChild(makeBox('base', [0, 0.15, 0], [1.5, 0.3, 1.2], matDarkWood));
+
+  app.root.addChild(group);
+  return group;
+}
+
+// Left rows of slots
+for (let row = 0; row < 2; row++) {
+  for (let i = 0; i < 6; i++) {
+    makeSlotMachine(-20 + row * 3.5, -18 + i * 4.5, row === 0 ? 90 : -90, i + row);
+  }
+}
+// Right rows
+for (let row = 0; row < 2; row++) {
+  for (let i = 0; i < 6; i++) {
+    makeSlotMachine(17 + row * 3.5, -18 + i * 4.5, row === 0 ? -90 : 90, i + row + 2);
+  }
+}
+
+// ===== CARD TABLES =====
+function makeCardTable(x, z, label) {
+  const group = new pc.Entity('table');
+  group.setLocalPosition(x, 0, z);
+
+  // Tabletop
+  const top = makeCylinder('top', [0, 1.1, 0], [3, 0.2, 2], matFelt);
+  group.addChild(top);
+  // Gold trim
+  group.addChild(makeTorus('trim', [0, 1.2, 0], [3.1, 1, 2.1], matGold, [90, 0, 0]));
+  // Base
+  group.addChild(makeCylinder('base', [0, 0.55, 0], [0.5, 1.1, 0.5], matDarkWood));
+  // Overhead light
+  const ol = new pc.Entity('t-light');
+  ol.addComponent('light', { type: 'spot', color: new pc.Color(1, 0.95, 0.8), intensity: 3, range: 10, outerConeAngle: 50, innerConeAngle: 25, castShadows: false });
+  ol.setLocalPosition(0, 5, 0);
+  const olTarget = new pc.Entity('t-light-tgt');
+  olTarget.setLocalPosition(0, 1, 0);
+  group.addChild(ol);
+  group.addChild(olTarget);
+  // @ts-ignore
+  ol.light.ta = olTarget;
+
+  app.root.addChild(group);
+  return group;
+}
+
+makeCardTable(-10, 8, 'BJ');
+makeCardTable(10, 8, 'BJ');
+makeCardTable(-10, 18, 'PKR');
+makeCardTable(10, 18, 'PKR');
+
+// ===== ROULETTE =====
+const rou = new pc.Entity('roulette');
+rou.setLocalPosition(0, 0, 20);
+rou.addChild(makeCylinder('r-base', [0, 0.5, 0], [1.5, 1.0, 1.5], matDarkWood));
+rou.addChild(makeCylinder('r-wheel', [0, 1.1, 0], [1.2, 0.2, 1.2], makeMat(rgb(0x1a0a04), null, 0, 0.7, 0.3)));
+rou.addChild(makeTorus('r-gold', [0, 1.2, 0], [1.25, 1, 1.25], matGold, [90, 0, 0]));
+rou.addChild(makeCylinder('r-cone', [0, 1.3, 0], [0.35, 0.35, 0.35], matGold));
+// Betting table
+rou.addChild(makeBox('r-bet', [0, 0.9, 3], [4.5, 0.1, 2.5], matFelt));
+app.root.addChild(rou);
+
+// ===== INSIDE TRACK (Horse Racing) =====
+const track = new pc.Entity('inside-track');
+track.setLocalPosition(0, 0, -22);
+
+// Big screen showing odds
+const screenBg = makeBox('it-screen-bg', [0, 5, -0.1], [12, 5, 0.2], makeMat(rgb(0x000000), null, 0, 0, 0.5));
+track.addChild(screenBg);
+// Screen content (green emissive)
+const screenContent = makeBox('it-screen', [0, 5, 0.05], [11.5, 4.5, 0.05], matGlowGreen);
+track.addChild(screenContent);
+// Frame
+track.addChild(makeBox('it-frame-top', [0, 7.6, 0], [12.5, 0.4, 0.4], matGold));
+track.addChild(makeBox('it-frame-bot', [0, 2.4, 0], [12.5, 0.4, 0.4], matGold));
+track.addChild(makeBox('it-frame-l', [-6.05, 5, 0], [0.4, 5.5, 0.4], matGold));
+track.addChild(makeBox('it-frame-r', [6.05, 5, 0], [0.4, 5.5, 0.4], matGold));
+
+// Betting counters in front of screen
+for (let i = 0; i < 5; i++) {
+  const counter = makeBox(`it-counter-${i}`, [-8 + i * 4, 1.0, 4], [3, 0.15, 1.2], matFelt);
+  track.addChild(counter);
+  track.addChild(makeBox(`it-counter-base-${i}`, [-8 + i * 4, 0.5, 4], [2.8, 1.0, 1.0], matDarkWood));
+}
+
+// Sign above
+track.addChild(makeBox('it-sign', [0, 8.5, 0.3], [6, 0.8, 0.2], makeMat(rgb(0x000000), rgb(0xff0000), 2.0, 0, 0.3)));
+
+app.root.addChild(track);
+
+// ===== BAR (back wall) =====
+makeBox('bar-top', [0, 1.3, -RD/2 + 2.5], [14, 0.2, 1.5], matMarbleBlack);
+makeBox('bar-front', [0, 0.65, -RD/2 + 1.8], [14, 1.3, 0.3], matDarkWood);
+// Glowing bottles
+const bottleColors = [0xff0000, 0x00ff00, 0x0088ff, 0xffff00, 0xff00ff, 0x00ffff];
+for (let i = 0; i < 12; i++) {
+  const bc = bottleColors[i % 6];
+  makeBox(`bottle-${i}`, [-6 + i * 1.1, 2.8, -RD/2 + 2], [0.35, 0.9, 0.35], makeMat(rgb(bc), rgb(bc), 0.7, 0, 0.2));
+}
+
+// ===== PILLARS =====
+const pillarPositions = [[-20,-20],[20,-20],[-20,20],[20,20],[-20,0],[20,0],[0,-20]];
+for (const [px, pz] of pillarPositions) {
+  makeCylinder('pillar', [px, RH/2, pz], [1.0, RH, 1.0], matMarbleWhite);
+  makeCylinder('pillar-base', [px, 0.3, pz], [1.3, 0.6, 1.3], matGold);
+  makeCylinder('pillar-cap', [px, RH - 0.3, pz], [1.2, 0.6, 1.2], matGold);
+}
+
+// ===== ENTRANCE ARCH =====
+makeBox('arch-l', [-5, 5, RD/2 - 0.5], [1.5, 10, 0.8], matGold);
+makeBox('arch-r', [5, 5, RD/2 - 0.5], [1.5, 10, 0.8], matGold);
+makeBox('arch-top', [0, 10, RD/2 - 0.5], [11.5, 1.5, 0.8], matGold);
+
+// ===== CAMERA + CONTROLLER =====
+const camera = new pc.Entity('camera');
+camera.addComponent('camera', {
+  fov: 75,
+  nearClip: 0.1,
+  farClip: 300,
+  clearColor: new pc.Color(0.04, 0.02, 0.06),
+});
+camera.setLocalPosition(0, 1.7, RD/2 - 3);
+app.root.addChild(camera);
+
+// Hemisphere-like fill light at camera
+const fillLight = new pc.Entity('fill');
+fillLight.addComponent('light', {
+  type: 'directional',
+  color: new pc.Color(0.5, 0.4, 0.3),
+  intensity: 0.5,
+  castShadows: false,
+});
+fillLight.setLocalEulerAngles(-45, 0, 0);
+app.root.addChild(fillLight);
+
+// Main light from above
+const mainLight = new pc.Entity('main-light');
+mainLight.addComponent('light', {
+  type: 'directional',
+  color: new pc.Color(1, 0.9, 0.7),
+  intensity: 1.5,
+  castShadows: true,
+  shadowDistance: 80,
+  shadowMapResolution: 1024,
+});
+mainLight.setLocalEulerAngles(-90, 0, 0);
+app.root.addChild(mainLight);
+
+// ===== FIRST PERSON CONTROLLER =====
+let isLocked = false;
+let yaw = Math.PI, pitch = 0;
+const keys = {};
+
+document.addEventListener('keydown', (e) => { keys[e.code] = true; });
+document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+document.addEventListener('mousemove', (e) => {
+  if (!isLocked) return;
+  yaw -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, pitch));
+});
+
+document.addEventListener('pointerlockchange', () => {
+  isLocked = document.pointerLockElement === canvas;
+  document.getElementById('overlay').style.display = isLocked ? 'none' : 'flex';
+  document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
+});
+
+canvas.addEventListener('click', () => {
+  if (!isLocked) canvas.requestPointerLock();
+});
+
+// Movement
+const speed = 8;
+const boundX = RW/2 - 2;
+const boundZ = RD/2 - 2;
+let time = 0;
+
+app.on('update', (dt) => {
+  time += dt;
+
+  const fwd = new pc.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const right = new pc.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const move = new pc.Vec3(0, 0, 0);
+
+  if (keys['KeyW'] || keys['ArrowUp']) move.add(fwd);
+  if (keys['KeyS'] || keys['ArrowDown']) move.sub(fwd);
+  if (keys['KeyD'] || keys['ArrowRight']) move.add(right);
+  if (keys['KeyA'] || keys['ArrowLeft']) move.sub(right);
+
+  const sprint = keys['ShiftLeft'] || keys['ShiftRight'] ? 1.8 : 1;
+
+  if (move.lengthSq() > 0) {
+    move.normalize().mulScalar(speed * sprint * dt);
+    camera.translate(move);
+  }
+
+  const pos = camera.getLocalPosition();
+  pos.x = Math.max(-boundX, Math.min(boundX, pos.x));
+  pos.z = Math.max(-boundZ, Math.min(boundZ, pos.z));
+  pos.y = 1.7;
+  camera.setLocalPosition(pos);
+
+  camera.setLocalEulerAngles(pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0);
+
+  // Pulse neon + emissive objects
+  // (Skip for performance - static glow looks great)
+});
+
+// ===== RESIZE =====
+window.addEventListener('resize', () => {
+  app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
+  app.resizeCanvas();
+});
+
+// ===== START =====
+app.start();
+
+// Hide loading
+setTimeout(() => {
+  const loading = document.getElementById('loading');
+  if (loading) loading.style.display = 'none';
+}, 1500);
+
+// ===== WALLET CONNECT =====
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  if (!window.ethereum) {
+    alert('MetaMask not found. Install MetaMask to connect.');
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const balance = await window.ethereum.request({ method: 'eth_getBalance', params: [accounts[0], 'latest'] });
+    const balEth = parseInt(balance, 16) / 1e18;
+
+    document.getElementById('connectBtn').style.display = 'none';
+    const wd = document.getElementById('walletDisplay');
+    wd.style.display = 'flex';
+    document.getElementById('walletAddr').textContent = accounts[0].slice(0, 6) + '...' + accounts[0].slice(-4);
+    document.getElementById('walletBal').textContent = balEth.toFixed(4) + ' ETH';
+  } catch (e) {
+    console.error(e);
+  }
+});
+</script>
+</body>
+</html>
