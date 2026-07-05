@@ -7,8 +7,8 @@ export interface CasinoScene {
 export function createCasino(canvas: HTMLCanvasElement): CasinoScene {
   // ===== SCENE =====
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0608);
-  scene.fog = new THREE.FogExp2(0x0a0608, 0.018);
+  scene.background = new THREE.Color(0x1a1015);
+  scene.fog = new THREE.FogExp2(0x1a1015, 0.012);
 
   // ===== CAMERA =====
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
@@ -503,12 +503,23 @@ export function createCasino(canvas: HTMLCanvasElement): CasinoScene {
   }
 
   // ===== AMBIENT LIGHTING =====
-  const ambient = new THREE.AmbientLight(0x553311, 0.25);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.4);
   scene.add(ambient);
 
   // Hemisphere light for general fill
-  const hemi = new THREE.HemisphereLight(0x442211, 0x110604, 0.3);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5);
   scene.add(hemi);
+
+  // Main directional light
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(10, 20, 10);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.set(1024, 1024);
+  dirLight.shadow.camera.left = -30;
+  dirLight.shadow.camera.right = 30;
+  dirLight.shadow.camera.top = 30;
+  dirLight.shadow.camera.bottom = -30;
+  scene.add(dirLight);
 
   // ===== FIRST PERSON CONTROLS =====
   const player = {
