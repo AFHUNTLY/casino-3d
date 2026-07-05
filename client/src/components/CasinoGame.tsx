@@ -19,8 +19,9 @@ export default function CasinoGame() {
     try {
       sceneRef.current = createCasino(canvasRef.current);
       setLoaded(true);
+      console.log('[Casino] Scene initialized successfully');
     } catch (err) {
-      console.error('Failed to init casino scene:', err);
+      console.error('[Casino] Failed to init casino scene:', err);
     }
 
     const onLockChange = (e: Event) => {
