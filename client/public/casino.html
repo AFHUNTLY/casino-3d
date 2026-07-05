@@ -81,12 +81,11 @@ console.log('[Casino] PlayCanvas loaded, version:', pc.version || 'unknown');
 
 // ===== INIT =====
 const canvas = document.getElementById('app');
-const app = new pc.Application(canvas);
-const opts = new pc.AppOptions();
-opts.keyboard = new pc.Keyboard(window);
-opts.mouse = new pc.Mouse(canvas);
-app.init(opts);
-app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
+const app = new pc.Application(canvas, {
+  keyboard: new pc.Keyboard(window),
+  mouse: new pc.Mouse(canvas),
+});
+app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
 app.setCanvasResolution(pc.RESOLUTION_AUTO);
 app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio, 2);
 
