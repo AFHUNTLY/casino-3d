@@ -503,23 +503,26 @@ export function createCasino(canvas: HTMLCanvasElement): CasinoScene {
   }
 
   // ===== AMBIENT LIGHTING =====
-  const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambient);
 
   // Hemisphere light for general fill
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x666666, 0.6);
   scene.add(hemi);
 
-  // Main directional light
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(10, 20, 10);
-  dirLight.castShadow = true;
-  dirLight.shadow.mapSize.set(1024, 1024);
-  dirLight.shadow.camera.left = -30;
-  dirLight.shadow.camera.right = 30;
-  dirLight.shadow.camera.top = 30;
-  dirLight.shadow.camera.bottom = -30;
+  // Main directional light (fills the whole room)
+  const dirLight = new THREE.DirectionalLight(0xffeedd, 1.0);
+  dirLight.position.set(0, 30, 0);
   scene.add(dirLight);
+
+  // Additional fill lights for slot machine areas
+  const fillLeft = new THREE.PointLight(0xff8844, 1.5, 30);
+  fillLeft.position.set(-15, 6, 0);
+  scene.add(fillLeft);
+  
+  const fillRight = new THREE.PointLight(0x4488ff, 1.5, 30);
+  fillRight.position.set(15, 6, 0);
+  scene.add(fillRight);
 
   // ===== FIRST PERSON CONTROLS =====
   const player = {
