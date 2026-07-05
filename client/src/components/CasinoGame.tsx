@@ -14,15 +14,22 @@ export default function CasinoGame() {
 
   // Initialize Three.js scene
   useEffect(() => {
-    if (!canvasRef.current || sceneRef.current) return;
+    let disposed = false;
+    let scene: CasinoScene | null = null;
 
-    try {
-      sceneRef.current = createCasino(canvasRef.current);
-      setLoaded(true);
-      console.log('[Casino] Scene initialized successfully');
-    } catch (err) {
-      console.error('[Casino] Failed to init casino scene:', err);
-    }
+    // Small delay to ensure canvas is mounted and sized
+    const timer = setTimeout(() => {
+      if (disposed || !canvasRef.current) return;
+      
+      try {
+        scene = createCasino(canvasRef.current);
+        sceneRef.current = scene;
+        setLoaded(true);
+        console.log('[Casino] Scene initialized successfully');
+      } catch (err) {
+        console.error('[Casino] Failed to init casino scene:', err);
+      }
+    }, 100);
 
     const onLockChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -31,8 +38,10 @@ export default function CasinoGame() {
     window.addEventListener('casino:pointerlock', onLockChange);
 
     return () => {
+      disposed = true;
+      clearTimeout(timer);
       window.removeEventListener('casino:pointerlock', onLockChange);
-      sceneRef.current?.dispose();
+      scene?.dispose();
       sceneRef.current = null;
     };
   }, []);

@@ -15,7 +15,7 @@ export function createCasino(canvas: HTMLCanvasElement): CasinoScene {
   camera.position.set(0, 1.7, 18);
 
   // ===== RENDERER =====
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
