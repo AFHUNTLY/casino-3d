@@ -94,7 +94,6 @@ canvas{display:block;width:100%;height:100%}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/playcanvas@2.20.5/build/playcanvas.min.js"></script>
-<script src="provablyfair.js"></script>
 
 <script>
 window.onerror = function(msg, src, line, col, err) {
@@ -412,50 +411,6 @@ makeBox('arch-l', [-5, 5, RD/2 - 0.5], [1.5, 10, 0.8], matGold);
 makeBox('arch-r', [5, 5, RD/2 - 0.5], [1.5, 10, 0.8], matGold);
 makeBox('arch-top', [0, 10, RD/2 - 0.5], [11.5, 1.5, 0.8], matGold);
 
-// ===== LUCKY WHEEL (GTA V Podium Vehicle style) =====
-const luckyWheel = new pc.Entity('lucky-wheel');
-luckyWheel.setLocalPosition(0, 0, 15);
-// Base platform
-luckyWheel.addChild(makeCylinder('lw-base', [0, 0.15, 0], [2, 0.3, 2], matDarkWood));
-luckyWheel.addChild(makeCylinder('lw-pole', [0, 1.0, 0], [0.3, 1.4, 0.3], matGold));
-// Wheel (cylinder face forward)
-const wheelSegColors = [
-  makeMat(rgb(0x000000), rgb(0xff0000), 1.5, 0, 0.3),   // 0 red
-  makeMat(rgb(0x000000), rgb(0x00aa00), 1.5, 0, 0.3),   // 1 green
-  makeMat(rgb(0x000000), rgb(0x0066ff), 1.5, 0, 0.3),   // 2 blue
-  makeMat(rgb(0x000000), rgb(0xff9500), 1.5, 0, 0.3),   // 3 orange
-  makeMat(rgb(0x000000), rgb(0x9500ff), 1.5, 0, 0.3),   // 4 purple
-  makeMat(rgb(0x000000), rgb(0x00ffee), 1.5, 0, 0.3),   // 5 cyan
-  makeMat(rgb(0x000000), rgb(0xff0066), 1.5, 0, 0.3),   // 6 pink
-  makeMat(rgb(0x000000), rgb(0xffff00), 1.5, 0, 0.3),   // 7 yellow
-];
-const wheelRadius = 1.8;
-for (let i = 0; i < 8; i++) {
-  const angle = (i / 8) * Math.PI * 2;
-  const seg = makeBox('lw-seg-' + i,
-    [Math.cos(angle) * wheelRadius * 0.65, 2.0 + Math.sin(angle) * wheelRadius * 0.65, 0.1],
-    [0.8, 1.2, 0.1],
-    wheelSegColors[i]
-  );
-  seg.setLocalEulerAngles(0, 0, (i / 8) * 360 + 22.5);
-  luckyWheel.addChild(seg);
-}
-// Wheel outer ring
-luckyWheel.addChild(makeTorus('lw-ring', [0, 2.0, 0], [wheelRadius * 2, 1, wheelRadius * 2], matGold, [90, 0, 0]));
-// Wheel center hub
-luckyWheel.addChild(makeCylinder('lw-hub', [0, 2.0, 0.2], [0.35, 0.15, 0.35], matGold));
-// Pointer at top
-luckyWheel.addChild(makeBox('lw-pointer', [0, 3.8, 0.4], [0.2, 0.3, 0.1], matGold, [0, 0, 180]));
-// Sign
-luckyWheel.addChild(makeBox('lw-sign', [0, 4.4, 0], [3, 0.6, 0.2], makeMat(rgb(0x000000), rgb(0xffd700), 1.5, 0, 0.3)));
-// Spotlight
-const lwLight = new pc.Entity('lw-light');
-lwLight.addComponent('light', { type: 'spot', color: new pc.Color(1, 0.9, 0.5), intensity: 4, range: 12, outerConeAngle: 40, innerConeAngle: 20, castShadows: false });
-lwLight.setLocalPosition(0, 7, 2);
-luckyWheel.addChild(lwLight);
-
-app.root.addChild(luckyWheel);
-
 // ===== CAMERA + CONTROLLER =====
 const camera = new pc.Entity('camera');
 camera.addComponent('camera', {
@@ -737,70 +692,6 @@ function checkSlotResult(results) {
   }
 }
 
-// ===== GAME 2: LUCKY WHEEL =====
-const wheelSegments = [
-  { label: '💰 50x Payout', color: '#ff0000', multiplier: 50 },
-  { label: '🚗 Vehicle (NFT)', color: '#00aa00', multiplier: 25 },
-  { label: '💎 10x Payout', color: '#0066ff', multiplier: 10 },
-  { label: '🎁 Mystery Box', color: '#ff9500', multiplier: 5 },
-  { label: '👑 VIP Pass', color: '#9500ff', multiplier: 15 },
-  { label: '🎰 Free Spins x3', color: '#00ffee', multiplier: 3 },
-  { label: '💸 2x Payout', color: '#ff0066', multiplier: 2 },
-  { label: '🥇 Jackpot!', color: '#ffff00', multiplier: 100 },
-];
-
-registerGame('🎡 Lucky Wheel', [0, 0, 15], 4, openLuckyWheel);
-
-function openLuckyWheel() {
-  setModalSub('Spin the wheel once per day • Provably Fair');
-  setModalContent(`
-    <div style="text-align:center">
-      <div style="width:200px;height:200px;margin:0 auto 16px;position:relative">
-        ${wheelSegments.map((seg, i) => {
-          const angle = (i / 8) * 360;
-          return `<div style="position:absolute;top:50%;left:50%;width:80px;height:100px;background:${seg.color};transform-origin:bottom center;transform:translate(-50%,-100%) rotate(${angle}deg);border-radius:8px 8px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8)">${seg.label.split(' ')[0]}</div>`;
-        }).join('')}
-        <div style="position:absolute;top:-15px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:20px solid #ffd700;z-index:10"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:30px;background:#ffd700;border-radius:50%;z-index:5"></div>
-      </div>
-      <div id="wheel-result"></div>
-      <button class="btn-primary" id="wheel-spin">🎡 SPIN THE WHEEL</button>
-      <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
-    </div>
-  `);
-  document.getElementById('wheel-spin').addEventListener('click', spinLuckyWheel);
-}
-
-let wheelSpinning = false;
-async function spinLuckyWheel() {
-  if (wheelSpinning) return;
-  wheelSpinning = true;
-  const btn = document.getElementById('wheel-spin');
-  btn.disabled = true;
-  btn.textContent = '🎡 SPINNING...';
-  document.getElementById('wheel-result').innerHTML = '<div class="result-box result-pending">🎲 Provably fair roll...</div>';
-
-  // Get provably fair result
-  const { segment } = await ProvablyFair.rollWheel(8);
-  const win = wheelSegments[segment];
-
-  // Animate the spin with CSS
-  const wheelContainer = document.querySelector('#game-modal-content > div > div:first-child');
-  const targetRotation = 360 * 5 + (segment / 8) * 360; // 5 full spins + segment
-  if (wheelContainer) {
-    wheelContainer.style.transition = 'transform 3s cubic-bezier(0.17, 0.67, 0.12, 0.99)';
-    wheelContainer.style.transform = `rotate(${targetRotation}deg)`;
-  }
-
-  setTimeout(() => {
-    wheelSpinning = false;
-    btn.disabled = false;
-    btn.textContent = '🎡 SPIN AGAIN';
-    document.getElementById('wheel-result').innerHTML =
-      `<div class="result-box result-win">🎉 ${win.label}<br>+${win.multiplier}x multiplier!</div>`;
-  }, 3100);
-}
-
 // ===== RESIZE =====
 window.addEventListener('resize', () => {
   app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
@@ -814,14 +705,6 @@ console.log('[Casino] App started successfully');
 // Hide loading after app starts
 const loading = document.getElementById('loading');
 if (loading) loading.style.display = 'none';
-
-// Initialize provably fair session
-ProvablyFair.init().then(session => {
-  console.log('[Casino] Provably fair session started:', session);
-  window._fairSession = session;
-}).catch(err => {
-  console.error('[Casino] Provably fair init failed:', err);
-});
 
 // ===== WALLET CONNECT =====
 document.getElementById('connectBtn').addEventListener('click', async () => {
