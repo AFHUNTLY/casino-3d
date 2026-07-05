@@ -30,6 +30,31 @@ canvas{display:block;width:100%;height:100%}
 #loading-sub{color:#888;font-size:16px}
 #spinner{margin-top:24px;width:36px;height:36px;border:3px solid rgba(255,215,0,.2);border-top-color:#ffd700;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* === GAME INTERACTION === */
+#game-prompt{position:fixed;bottom:25%;left:50%;transform:translateX(-50%);background:rgba(20,20,30,.92);border:1px solid rgba(255,215,0,.4);border-radius:8px;padding:10px 24px;z-index:110;display:none;animation:fadeIn .2s}
+#game-prompt span{color:#ffd700;font-weight:600;font-size:15px}
+#game-prompt kbd{background:#333;border:1px solid #555;border-radius:4px;padding:2px 8px;color:#fff;font-size:13px;margin-right:6px}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* === GAME MODAL === */
+#game-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:300}
+#game-modal-box{background:linear-gradient(135deg,#1a1520,#0d0a0f);border:1px solid rgba(255,215,0,.3);border-radius:16px;padding:32px;min-width:400px;max-width:90vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.8),0 0 80px rgba(255,215,0,.08)}
+#game-modal-title{font-size:24px;font-weight:800;color:#ffd700;margin-bottom:8px;text-align:center}
+#game-modal-sub{font-size:13px;color:#888;text-align:center;margin-bottom:20px}
+.bet-row{display:flex;align-items:center;justify-content:space-between;margin:8px 0;padding:10px 14px;background:rgba(255,255,255,.04);border-radius:8px}
+.bet-row label{color:#ccc;font-size:14px}
+.bet-row input,.bet-row select{background:rgba(0,0,0,.4);border:1px solid rgba(255,215,0,.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:14px;font-family:monospace}
+.bet-row input:focus{outline:none;border-color:rgba(255,215,0,.5)}
+.btn-primary{display:block;width:100%;margin-top:16px;background:linear-gradient(135deg,#ffd700,#ff9500);color:#000;border:none;padding:12px;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(255,215,0,.4)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-secondary{display:block;width:100%;margin-top:8px;background:rgba(255,255,255,.08);color:#ccc;border:1px solid rgba(255,255,255,.1);padding:10px;border-radius:8px;font-size:14px;cursor:pointer}
+.btn-secondary:hover{background:rgba(255,255,255,.14)}
+.result-box{margin-top:16px;padding:16px;border-radius:8px;text-align:center;font-size:18px;font-weight:700}
+.result-win{background:rgba(0,255,100,.15);border:1px solid rgba(0,255,100,.3);color:#4f4}
+.result-lose{background:rgba(255,50,50,.15);border:1px solid rgba(255,50,50,.3);color:#f44}
+.result-pending{background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.2);color:#ffd700}
 </style>
 </head>
 <body>
@@ -45,11 +70,20 @@ canvas{display:block;width:100%;height:100%}
 </div>
 </div>
 <div class="crosshair" id="crosshair" style="display:none"></div>
+<div id="game-prompt"><kbd>E</kbd><span id="game-prompt-text">Play</span></div>
 <div id="overlay">
 <div id="overlay-box">
 <span id="overlay-title">CLICK TO ENTER</span>
-<span id="overlay-hint">WASD to walk • Mouse to look • ESC to release • Shift to sprint</span>
+<span id="overlay-hint">WASD to walk • Mouse to look • ESC to release • Shift to sprint<br><b style="color:#8af">Press E near a game to play</b></span>
 </div>
+</div>
+</div>
+
+<div id="game-modal">
+<div id="game-modal-box">
+<div id="game-modal-title"></div>
+<div id="game-modal-sub"></div>
+<div id="game-modal-content"></div>
 </div>
 </div>
 
@@ -433,9 +467,15 @@ document.addEventListener('pointerlockchange', () => {
   document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
 });
 
-canvas.addEventListener('click', () => {
-  if (!isLocked) canvas.requestPointerLock();
-});
+// Click overlay or canvas to enter pointer lock
+function requestLock() {
+  if (!isLocked) {
+    canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock || canvas.webkitRequestPointerLock;
+    if (canvas.requestPointerLock) canvas.requestPointerLock();
+  }
+}
+document.getElementById('overlay').addEventListener('click', requestLock);
+canvas.addEventListener('click', requestLock);
 
 // Movement
 const speed = 8;
@@ -446,16 +486,17 @@ let time = 0;
 app.on('update', (dt) => {
   time += dt;
 
-  const fwd = new pc.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
-  const right = new pc.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
+  // Use PlayCanvas camera forward/right vectors for correct movement
+  const fwd = camera.forward;
+  const right = camera.right;
   const move = new pc.Vec3(0, 0, 0);
 
-  if (keys['KeyW'] || keys['ArrowUp']) move.add(fwd);
-  if (keys['KeyS'] || keys['ArrowDown']) move.sub(fwd);
-  if (keys['KeyD'] || keys['ArrowRight']) move.add(right);
-  if (keys['KeyA'] || keys['ArrowLeft']) move.sub(right);
+  if (keys['KeyW'] || keys['ArrowUp']) { move.x += fwd.x; move.z += fwd.z; }
+  if (keys['KeyS'] || keys['ArrowDown']) { move.x -= fwd.x; move.z -= fwd.z; }
+  if (keys['KeyD'] || keys['ArrowRight']) { move.x += right.x; move.z += right.z; }
+  if (keys['KeyA'] || keys['ArrowLeft']) { move.x -= right.x; move.z -= right.z; }
 
-  const sprint = keys['ShiftLeft'] || keys['ShiftRight'] ? 1.8 : 1;
+  const sprint = (keys['ShiftLeft'] || keys['ShiftRight']) ? 1.8 : 1;
 
   if (move.lengthSq() > 0) {
     move.normalize().mulScalar(speed * sprint * dt);
@@ -468,11 +509,188 @@ app.on('update', (dt) => {
   pos.y = 1.7;
   camera.setLocalPosition(pos);
 
+  // Apply look rotation — yaw around Y, pitch around X
   camera.setLocalEulerAngles(pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0);
 
-  // Pulse neon + emissive objects
-  // (Skip for performance - static glow looks great)
+  // === GAME INTERACTION SYSTEM ===
+  checkNearbyGames();
 });
+
+// ===== GAME INTERACTION SYSTEM =====
+// Each interactive game registers its position + a handler
+const interactiveObjects = [];
+let nearbyGame = null;
+let activeGame = null;
+
+function registerGame(name, position, radius, openFn) {
+  interactiveObjects.push({ name, position: new pc.Vec3(position[0], position[1], position[2]), radius, openFn });
+}
+
+function checkNearbyGames() {
+  if (activeGame) return; // Don't check while playing
+  const playerPos = camera.getLocalPosition();
+  let closest = null;
+  let closestDist = Infinity;
+
+  for (const game of interactiveObjects) {
+    const dx = playerPos.x - game.position.x;
+    const dz = playerPos.z - game.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < game.radius && dist < closestDist) {
+      closest = game;
+      closestDist = dist;
+    }
+  }
+
+  const prompt = document.getElementById('game-prompt');
+  if (closest) {
+    nearbyGame = closest;
+    prompt.style.display = 'block';
+    document.getElementById('game-prompt-text').textContent = 'Play ' + closest.name;
+  } else {
+    nearbyGame = null;
+    prompt.style.display = 'none';
+  }
+}
+
+// E key to interact
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyE' && nearbyGame && !activeGame) {
+    e.preventDefault();
+    openGameModal(nearbyGame);
+  }
+  if (e.code === 'Escape' && activeGame) {
+    closeGameModal();
+  }
+});
+
+function openGameModal(game) {
+  activeGame = game;
+  // Exit pointer lock so user can interact with modal
+  if (document.pointerLockElement) document.exitPointerLock();
+  document.getElementById('game-prompt').style.display = 'none';
+  document.getElementById('game-modal').style.display = 'flex';
+  document.getElementById('game-modal-title').textContent = game.name;
+  game.openFn();
+}
+
+function closeGameModal() {
+  activeGame = null;
+  document.getElementById('game-modal').style.display = 'none';
+  document.getElementById('game-modal-content').innerHTML = '';
+}
+
+function setModalContent(html) {
+  document.getElementById('game-modal-content').innerHTML = html;
+}
+
+function setModalSub(text) {
+  document.getElementById('game-modal-sub').textContent = text;
+}
+
+// ===== GAME 1: SLOT MACHINE =====
+// Register all slot machines as interactive
+const slotPositions = [];
+// Left rows
+for (let row = 0; row < 2; row++) {
+  for (let i = 0; i < 6; i++) {
+    slotPositions.push([-20 + row * 3.5, -18 + i * 4.5]);
+  }
+}
+// Right rows
+for (let row = 0; row < 2; row++) {
+  for (let i = 0; i < 6; i++) {
+    slotPositions.push([17 + row * 3.5, -18 + i * 4.5]);
+  }
+}
+
+const slotSymbols = ['7️⃣', '💎', '🔔', '🍒', '🍋', '🍊', '⭐', '🍀'];
+const slotPayouts = { '7️⃣': 50, '💎': 20, '🔔': 10, '🍒': 5, '🍋': 3, '🍊': 3, '⭐': 8, '🍀': 4 };
+
+for (let i = 0; i < slotPositions.length; i++) {
+  const [sx, sz] = slotPositions[i];
+  registerGame('🎰 Slots #' + (i + 1), [sx, 0, sz], 3.5, () => openSlots(i));
+}
+
+function openSlots(slotIndex) {
+  setModalSub('Provably Fair • 3 Reels • Match 3 to win');
+  setModalContent(`
+    <div class="bet-row">
+      <label>Bet Amount (ETH)</label>
+      <input type="number" id="slot-bet" value="0.001" min="0.0001" step="0.0001" style="width:120px"/>
+    </div>
+    <div style="display:flex;justify-content:center;gap:12px;margin:24px 0">
+      <div id="reel0" style="font-size:48px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.3);border-radius:12px;width:80px;height:90px;display:flex;align-items:center;justify-content:center">?</div>
+      <div id="reel1" style="font-size:48px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.3);border-radius:12px;width:80px;height:90px;display:flex;align-items:center;justify-content:center">?</div>
+      <div id="reel2" style="font-size:48px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.3);border-radius:12px;width:80px;height:90px;display:flex;align-items:center;justify-content:center">?</div>
+    </div>
+    <div style="text-align:center;color:#888;font-size:13px;margin-bottom:8px">
+      7️⃣=50x 💎=20x 🔔=10x ⭐=8x 🍒=5x 🍀=4x 🍋🍊=3x
+    </div>
+    <div id="slot-result"></div>
+    <button class="btn-primary" id="slot-spin">🎰 SPIN</button>
+    <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
+  `);
+
+  document.getElementById('slot-spin').addEventListener('click', spinSlots);
+}
+
+let slotSpinning = false;
+function spinSlots() {
+  if (slotSpinning) return;
+  slotSpinning = true;
+
+  const btn = document.getElementById('slot-spin');
+  btn.disabled = true;
+  btn.textContent = '🎰 SPINNING...';
+  document.getElementById('slot-result').innerHTML = '<div class="result-box result-pending">🎲 Rolling...</div>';
+
+  const reels = [document.getElementById('reel0'), document.getElementById('reel1'), document.getElementById('reel2')];
+  const results = [];
+
+  // Animate each reel stopping sequentially
+  for (let r = 0; r < 3; r++) {
+    let spins = 0;
+    const maxSpins = 8 + r * 4; // Each reel spins longer
+    const interval = setInterval(() => {
+      reels[r].textContent = slotSymbols[Math.floor(Math.random() * slotSymbols.length)];
+      spins++;
+      if (spins >= maxSpins) {
+        clearInterval(interval);
+        results[r] = slotSymbols[Math.floor(Math.random() * slotSymbols.length)];
+        reels[r].textContent = results[r];
+
+        if (r === 2) {
+          // All reels stopped — check result
+          checkSlotResult(results);
+        }
+      }
+    }, 80);
+  }
+}
+
+function checkSlotResult(results) {
+  slotSpinning = false;
+  const btn = document.getElementById('slot-spin');
+  btn.disabled = false;
+  btn.textContent = '🎰 SPIN AGAIN';
+
+  const resultDiv = document.getElementById('slot-result');
+  const bet = parseFloat(document.getElementById('slot-bet').value) || 0.001;
+
+  if (results[0] === results[1] && results[1] === results[2]) {
+    // Three of a kind!
+    const multiplier = slotPayouts[results[0]] || 3;
+    const winnings = bet * multiplier;
+    resultDiv.innerHTML = `<div class="result-box result-win">🎉 JACKPOT! ${results[0]} ${results[1]} ${results[2]}<br>Won ${winnings.toFixed(4)} ETH (${multiplier}x)</div>`;
+  } else if (results[0] === results[1] || results[1] === results[2]) {
+    // Two of a kind
+    const winnings = bet * 0.5;
+    resultDiv.innerHTML = `<div class="result-box result-win">✨ Two of a kind!<br>Won ${winnings.toFixed(4)} ETH (0.5x)</div>`;
+  } else {
+    resultDiv.innerHTML = `<div class="result-box result-lose">💔 No match — try again!</div>`;
+  }
+}
 
 // ===== RESIZE =====
 window.addEventListener('resize', () => {
