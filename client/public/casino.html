@@ -853,12 +853,12 @@ window.addEventListener('resize', () => {
 
 // ===== PERFORMANCE OPTIMIZATION =====
 // Detect mobile / low-end devices and reduce quality
-const isMobile = isTouch || window.innerWidth < 768;
-if (isMobile) {
-  app.graphicsDevice.maxPixelRatio = 1; // Lower res on mobile
-  // Disable shadows on mobile
+const _isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const _isMobile = _isTouchDevice || window.innerWidth < 768;
+if (_isMobile) {
+  app.graphicsDevice.maxPixelRatio = 1;
   mainLight.light.castShadows = false;
-  app.scene.fogDensity = 0.025; // Simpler fog
+  app.scene.fogDensity = 0.025;
 } else {
   app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio, 1.5);
 }
