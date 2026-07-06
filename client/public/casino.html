@@ -55,6 +55,29 @@ canvas{display:block;width:100%;height:100%}
 .result-win{background:rgba(0,255,100,.15);border:1px solid rgba(0,255,100,.3);color:#4f4}
 .result-lose{background:rgba(255,50,50,.15);border:1px solid rgba(255,50,50,.3);color:#f44}
 .result-pending{background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.2);color:#ffd700}
+
+/* === CHAT === */
+#chat-panel{position:fixed;bottom:0;left:0;width:340px;z-index:110;display:flex;flex-direction:column;pointer-events:none}
+#chat-messages{flex:1;max-height:200px;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px;pointer-events:auto;mask-image:linear-gradient(to top,black 70%,transparent)}
+.chat-msg{font-size:13px;line-height:1.4;text-shadow:0 1px 3px rgba(0,0,0,.8);word-break:break-word}
+.chat-name{font-weight:700}
+.chat-input-row{display:flex;gap:6px;padding:6px;pointer-events:auto;background:rgba(0,0,0,.5);border-top:1px solid rgba(255,215,0,.15)}
+#chat-input{flex:1;background:rgba(0,0,0,.5);border:1px solid rgba(255,215,0,.2);color:#fff;padding:6px 10px;border-radius:6px;font-size:13px;outline:none}
+#chat-input:focus{border-color:rgba(255,215,0,.5)}
+#chat-send{background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#ffd700;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
+#chat-send:hover{background:rgba(255,215,0,.25)}
+
+/* === ONLINE COUNTER === */
+#online-counter{position:fixed;top:60px;right:24px;background:rgba(20,20,30,.85);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:6px 14px;font-size:13px;color:#aaa;z-index:101}
+#online-counter b{color:#4f4}
+
+/* === MOBILE CONTROLS === */
+#mobile-controls{display:none;position:fixed;inset:0;z-index:90;pointer-events:none}
+#joystick{position:fixed;bottom:80px;left:60px;width:120px;height:120px;pointer-events:auto}
+#joystick-base{width:100%;height:100%;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,215,0,.2);position:relative;touch-action:none}
+#joystick-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,215,0,.3);border:2px solid rgba(255,215,0,.5);touch-action:none}
+#look-area{position:fixed;bottom:0;right:0;width:50%;height:60%;pointer-events:auto;touch-action:none}
+@media (pointer:coarse) and (max-width:1024px){#mobile-controls{display:block} .crosshair{display:none!important}}
 </style>
 </head>
 <body>
@@ -85,6 +108,21 @@ canvas{display:block;width:100%;height:100%}
 <div id="game-modal-sub"></div>
 <div id="game-modal-content"></div>
 </div>
+</div>
+
+<div id="online-counter">Players: <b id="online-count">1</b></div>
+
+<div id="chat-panel">
+<div id="chat-messages"></div>
+<div class="chat-input-row">
+<input type="text" id="chat-input" placeholder="Type to chat..." maxlength="200"/>
+<button id="chat-send">Send</button>
+</div>
+</div>
+
+<div id="mobile-controls">
+<div id="joystick"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
+<div id="look-area"></div>
 </div>
 
 <div id="loading">
@@ -843,6 +881,307 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     console.error(e);
   }
 });
+
+// ===== MULTIPLAYER CLIENT =====
+const WS_URL = 'ws://65.109.181.34:8080/ws';
+let ws = null;
+let myPlayerId = null;
+let myPlayerName = localStorage.getItem('casino-name') || ('Guest ' + Math.floor(Math.random() * 9999));
+const remotePlayers = new Map(); // id -> { entity, name, color, x, y, z, rot, targetX, targetY, targetZ }
+
+function connectMultiplayer() {
+  try {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      console.log('[MP] Connected to server');
+      ws.send(JSON.stringify({ type: 'name', name: myPlayerName }));
+    };
+
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+
+      switch (msg.type) {
+        case 'init':
+          myPlayerId = msg.id;
+          console.log('[MP] My ID:', myPlayerId);
+          break;
+
+        case 'existing':
+          for (const p of msg.players) {
+            spawnRemotePlayer(p.id, p.name, p.color, p.x, p.y, p.z, p.rot);
+          }
+          break;
+
+        case 'join':
+          if (msg.id !== myPlayerId) {
+            spawnRemotePlayer(msg.id, msg.name, msg.color, 0, 1.7, 25, 0);
+            addChatMessage('System', msg.name + ' joined the casino', '#ffd700');
+          }
+          break;
+
+        case 'leave':
+          removeRemotePlayer(msg.id);
+          break;
+
+        case 'move':
+          updateRemotePlayer(msg.id, msg.x, msg.y, msg.z, msg.rot);
+          break;
+
+        case 'name':
+          if (remotePlayers.has(msg.id)) {
+            remotePlayers.get(msg.id).name = msg.name;
+          }
+          break;
+
+        case 'chat':
+          addChatMessage(msg.name, msg.message, msg.color);
+          break;
+
+        case 'players':
+          document.getElementById('online-count').textContent = msg.list.length;
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('[MP] Disconnected, retrying in 3s...');
+      setTimeout(connectMultiplayer, 3000);
+    };
+
+    ws.onerror = (err) => {
+      console.error('[MP] WS error', err);
+    };
+  } catch (e) {
+    console.error('[MP] Connection failed', e);
+  }
+}
+
+// === REMOTE PLAYER AVATARS ===
+function spawnRemotePlayer(id, name, color, x, y, z, rot) {
+  if (id === myPlayerId) return;
+  if (remotePlayers.has(id)) return;
+
+  const group = new pc.Entity('player-' + id);
+  group.setLocalPosition(x, y, z);
+
+  // Body capsule
+  const body = new pc.Entity('p-body');
+  body.addComponent('model', { type: 'capsule' });
+  body.setLocalScale(0.6, 1.6, 0.6);
+  body.setLocalPosition(0, 0.8, 0);
+  const bodyMat = new pc.StandardMaterial();
+  const c = hexToRgb(color);
+  bodyMat.diffuse = new pc.Color(c[0], c[1], c[2]);
+  bodyMat.emissive = new pc.Color(c[0] * 0.2, c[1] * 0.2, c[2] * 0.2);
+  bodyMat.update();
+  if (body.model.meshInstances[0]) body.model.meshInstances[0].material = bodyMat;
+  group.addChild(body);
+
+  // Head
+  const head = new pc.Entity('p-head');
+  head.addComponent('model', { type: 'sphere' });
+  head.setLocalScale(0.35, 0.35, 0.35);
+  head.setLocalPosition(0, 1.7, 0);
+  if (head.model.meshInstances[0]) head.model.meshInstances[0].material = bodyMat;
+  group.addChild(head);
+
+  // Name tag (screen entity)
+  const tag = new pc.Entity('p-tag');
+  tag.addComponent('text', {
+    text: name,
+    fontSize: 0.3,
+    color: new pc.Color(1, 1, 1),
+    outlineThickness: 0.05,
+    outlineColor: new pc.Color(0, 0, 0),
+  });
+  tag.setLocalPosition(0, 2.2, 0);
+  group.addChild(tag);
+
+  app.root.addChild(group);
+
+  remotePlayers.set(id, {
+    entity: group,
+    name: name,
+    color: color,
+    x: x, y: y, z: z, rot: rot,
+    targetX: x, targetY: y, targetZ: z, targetRot: rot,
+  });
+}
+
+function removeRemotePlayer(id) {
+  const rp = remotePlayers.get(id);
+  if (rp) {
+    rp.entity.destroy();
+    remotePlayers.delete(id);
+    addChatMessage('System', rp.name + ' left', '#888');
+  }
+}
+
+function updateRemotePlayer(id, x, y, z, rot) {
+  const rp = remotePlayers.get(id);
+  if (rp) {
+    rp.targetX = x;
+    rp.targetY = y;
+    rp.targetZ = z;
+    rp.targetRot = rot;
+  }
+}
+
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  return [parseInt(hex.substring(0, 2), 16) / 255, parseInt(hex.substring(2, 4), 16) / 255, parseInt(hex.substring(4, 6), 16) / 255];
+}
+
+// Interpolate remote players in update loop
+const origUpdate = app.on.bind(app);
+// We already have an update handler, let's add interpolation to it
+app.on('update', (dt) => {
+  for (const [id, rp] of remotePlayers) {
+    const pos = rp.entity.getLocalPosition();
+    pos.x += (rp.targetX - pos.x) * Math.min(1, dt * 10);
+    pos.y += (rp.targetY - pos.y) * Math.min(1, dt * 10);
+    pos.z += (rp.targetZ - pos.z) * Math.min(1, dt * 10);
+    rp.entity.setLocalPosition(pos);
+    // Smooth rotation
+    const eulers = rp.entity.getLocalEulerAngles();
+    let rotDiff = rp.targetRot - eulers.y;
+    while (rotDiff > 180) rotDiff -= 360;
+    while (rotDiff < -180) rotDiff += 360;
+    rp.entity.setLocalEulerAngles(0, eulers.y + rotDiff * Math.min(1, dt * 10), 0);
+  }
+});
+
+// Send position updates (10Hz)
+setInterval(() => {
+  if (ws && ws.readyState === WebSocket.OPEN && myPlayerId !== null) {
+    const pos = camera.getLocalPosition();
+    const rot = camera.getLocalEulerAngles();
+    ws.send(JSON.stringify({
+      type: 'move',
+      x: pos.x, y: pos.y, z: pos.z, rot: rot.y,
+    }));
+  }
+}, 100);
+
+// === CHAT ===
+function addChatMessage(name, message, color) {
+  const msgs = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  div.innerHTML = '<span class="chat-name" style="color:' + (color || '#fff') + '">' + escapeHtml(name) + '</span>: ' + escapeHtml(message);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  // Keep only last 30 messages
+  while (msgs.children.length > 30) msgs.removeChild(msgs.firstChild);
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'chat', message: msg }));
+  input.value = '';
+}
+
+document.getElementById('chat-send').addEventListener('click', sendChat);
+document.getElementById('chat-input').addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Enter') sendChat();
+});
+
+// === MOBILE CONTROLS ===
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+let joystickVec = { x: 0, y: 0 };
+let touchLook = { active: false, lastX: 0, lastY: 0 };
+
+if (isTouch) {
+  // Joystick
+  const joyBase = document.getElementById('joystick-base');
+  const joyKnob = document.getElementById('joystick-knob');
+  let joyStart = null;
+
+  joyBase.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = joyBase.getBoundingClientRect();
+    joyStart = { cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 };
+  });
+
+  joyBase.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!joyStart) return;
+    const t = e.touches[0];
+    let dx = t.clientX - joyStart.cx;
+    let dy = t.clientY - joyStart.cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxDist = 40;
+    if (dist > maxDist) { dx = dx / dist * maxDist; dy = dy / dist * maxDist; }
+    joyKnob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+    joystickVec.x = dx / maxDist;
+    joystickVec.y = dy / maxDist;
+  });
+
+  joyBase.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    joyKnob.style.transform = 'translate(-50%, -50%)';
+    joystickVec.x = 0;
+    joystickVec.y = 0;
+    joyStart = null;
+  });
+
+  // Look area (right side drag)
+  const lookArea = document.getElementById('look-area');
+  lookArea.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    touchLook.active = true;
+    touchLook.lastX = t.clientX;
+    touchLook.lastY = t.clientY;
+  });
+
+  lookArea.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!touchLook.active) return;
+    const t = e.touches[0];
+    yaw -= (t.clientX - touchLook.lastX) * 0.004;
+    pitch -= (t.clientY - touchLook.lastY) * 0.004;
+    pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
+    touchLook.lastX = t.clientX;
+    touchLook.lastY = t.clientY;
+  });
+
+  lookArea.addEventListener('touchend', (e) => {
+    touchLook.active = false;
+  });
+
+  // Override movement for touch
+  // We'll apply joystick in the update loop via a global
+  window._joystickVec = joystickVec;
+}
+
+// Apply joystick to movement in update loop
+app.on('update', (dt) => {
+  if (window._joystickVec && (window._joystickVec.x !== 0 || window._joystickVec.y !== 0)) {
+    const fwd = camera.forward;
+    const right = camera.right;
+    const move = new pc.Vec3(0, 0, 0);
+    move.x += fwd.x * -window._joystickVec.y + right.x * window._joystickVec.x;
+    move.z += fwd.z * -window._joystickVec.y + right.z * window._joystickVec.x;
+    if (move.lengthSq() > 0) {
+      move.normalize().mulScalar(speed * dt);
+      camera.translate(move);
+    }
+  }
+});
+
+// Connect to multiplayer
+connectMultiplayer();
 
 } catch(err) {
   window.onerror('Init failed', '', 0, 0, err);
