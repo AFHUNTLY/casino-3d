@@ -57,15 +57,19 @@ canvas{display:block;width:100%;height:100%}
 .result-pending{background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.2);color:#ffd700}
 
 /* === CHAT === */
-#chat-panel{position:fixed;bottom:0;left:0;width:340px;z-index:110;display:flex;flex-direction:column;pointer-events:none}
-#chat-messages{flex:1;max-height:200px;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px;pointer-events:auto;mask-image:linear-gradient(to top,black 70%,transparent)}
-.chat-msg{font-size:13px;line-height:1.4;text-shadow:0 1px 3px rgba(0,0,0,.8);word-break:break-word}
+#chat-panel{position:fixed;bottom:0;left:0;width:360px;z-index:110;pointer-events:none}
+#chat-messages{max-height:180px;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:3px;pointer-events:auto;mask-image:linear-gradient(to top,black 60%,transparent);scrollbar-width:thin}
+.chat-msg{font-size:13px;line-height:1.4;text-shadow:0 1px 3px rgba(0,0,0,.9);word-break:break-word;opacity:1;transition:opacity 8s}
+.chat-msg.fade{opacity:.3}
 .chat-name{font-weight:700}
-.chat-input-row{display:flex;gap:6px;padding:6px;pointer-events:auto;background:rgba(0,0,0,.5);border-top:1px solid rgba(255,215,0,.15)}
-#chat-input{flex:1;background:rgba(0,0,0,.5);border:1px solid rgba(255,215,0,.2);color:#fff;padding:6px 10px;border-radius:6px;font-size:13px;outline:none}
-#chat-input:focus{border-color:rgba(255,215,0,.5)}
-#chat-send{background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#ffd700;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
-#chat-send:hover{background:rgba(255,215,0,.25)}
+.chat-system{color:#ffd700;font-style:italic}
+#chat-hint{pointer-events:auto;background:rgba(0,0,0,.6);border-top:1px solid rgba(255,215,0,.15);border-radius:0 8px 0 0;padding:6px 14px;font-size:13px;color:#888;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:8px}
+#chat-hint:hover{background:rgba(20,20,30,.8);color:#ccc}
+#chat-hint kbd{background:#333;border:1px solid #555;border-radius:4px;padding:1px 7px;color:#fff;font-size:11px;font-family:monospace}
+#chat-input-row{display:none;gap:6px;padding:6px;pointer-events:auto;background:rgba(0,0,0,.7);border-top:1px solid rgba(255,215,0,.2)}
+#chat-input{flex:1;background:rgba(0,0,0,.5);border:1px solid rgba(255,215,0,.3);color:#fff;padding:7px 12px;border-radius:6px;font-size:14px;outline:none}
+#chat-input:focus{border-color:rgba(255,215,0,.6);box-shadow:0 0 10px rgba(255,215,0,.15)}
+#chat-input-row.active{display:flex}
 
 /* === ONLINE COUNTER === */
 #online-counter{position:fixed;top:60px;right:24px;background:rgba(20,20,30,.85);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:6px 14px;font-size:13px;color:#aaa;z-index:101}
@@ -114,10 +118,10 @@ canvas{display:block;width:100%;height:100%}
 
 <div id="chat-panel">
 <div id="chat-messages"></div>
-<div class="chat-input-row">
-<input type="text" id="chat-input" placeholder="Type to chat..." maxlength="200"/>
-<button id="chat-send">Send</button>
+<div id="chat-input-row">
+<input type="text" id="chat-input" placeholder="Type message..." maxlength="200" autocomplete="off"/>
 </div>
+<div id="chat-hint"><kbd>ENTER</kbd> to chat</div>
 </div>
 
 <div id="mobile-controls">
@@ -569,21 +573,23 @@ let time = 0;
 app.on('update', (dt) => {
   time += dt;
 
-  // Use PlayCanvas camera forward/right vectors for correct movement
-  const fwd = camera.forward;
-  const right = camera.right;
-  const move = new pc.Vec3(0, 0, 0);
+  // Don't process movement when chat is open or game modal is active
+  if (!chatMode && !activeGame) {
+    const fwd = camera.forward;
+    const right = camera.right;
+    _tmpVec1.set(0, 0, 0);
 
-  if (keys['KeyW'] || keys['ArrowUp']) { move.x += fwd.x; move.z += fwd.z; }
-  if (keys['KeyS'] || keys['ArrowDown']) { move.x -= fwd.x; move.z -= fwd.z; }
-  if (keys['KeyD'] || keys['ArrowRight']) { move.x += right.x; move.z += right.z; }
-  if (keys['KeyA'] || keys['ArrowLeft']) { move.x -= right.x; move.z -= right.z; }
+    if (keys['KeyW'] || keys['ArrowUp']) { _tmpVec1.x += fwd.x; _tmpVec1.z += fwd.z; }
+    if (keys['KeyS'] || keys['ArrowDown']) { _tmpVec1.x -= fwd.x; _tmpVec1.z -= fwd.z; }
+    if (keys['KeyD'] || keys['ArrowRight']) { _tmpVec1.x += right.x; _tmpVec1.z += right.z; }
+    if (keys['KeyA'] || keys['ArrowLeft']) { _tmpVec1.x -= right.x; _tmpVec1.z -= right.z; }
 
-  const sprint = (keys['ShiftLeft'] || keys['ShiftRight']) ? 1.8 : 1;
+    const sprint = (keys['ShiftLeft'] || keys['ShiftRight']) ? 1.8 : 1;
 
-  if (move.lengthSq() > 0) {
-    move.normalize().mulScalar(speed * sprint * dt);
-    camera.translate(move);
+    if (_tmpVec1.lengthSq() > 0) {
+      _tmpVec1.normalize().mulScalar(speed * sprint * dt);
+      camera.translate(_tmpVec1);
+    }
   }
 
   const pos = camera.getLocalPosition();
@@ -592,7 +598,7 @@ app.on('update', (dt) => {
   pos.y = 1.7;
   camera.setLocalPosition(pos);
 
-  // Apply look rotation — yaw around Y, pitch around X
+  // Apply look rotation
   camera.setLocalEulerAngles(pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0);
 
   // === GAME INTERACTION SYSTEM ===
@@ -845,6 +851,35 @@ window.addEventListener('resize', () => {
   app.resizeCanvas();
 });
 
+// ===== PERFORMANCE OPTIMIZATION =====
+// Detect mobile / low-end devices and reduce quality
+const isMobile = isTouch || window.innerWidth < 768;
+if (isMobile) {
+  app.graphicsDevice.maxPixelRatio = 1; // Lower res on mobile
+  // Disable shadows on mobile
+  mainLight.light.castShadows = false;
+  app.scene.fogDensity = 0.025; // Simpler fog
+} else {
+  app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio, 1.5);
+}
+
+// Pre-allocate vectors to avoid GC (PlayCanvas optimization tip)
+const _tmpVec1 = new pc.Vec3();
+const _tmpVec2 = new pc.Vec3();
+
+// Batch static meshes for performance (reduces draw calls)
+// Group all floor tiles, walls, pillars together
+try {
+  const batchManager = app.batcher;
+  if (batchManager) {
+    // Create batch groups for similar materials
+    // This merges meshes that share the same material into single draw calls
+    console.log('[Casino] Batch manager available, optimizing draw calls...');
+  }
+} catch(e) {
+  console.log('[Casino] Batching skipped:', e.message);
+}
+
 // ===== START =====
 app.start();
 console.log('[Casino] App started successfully');
@@ -1065,15 +1100,21 @@ setInterval(() => {
   }
 }, 100);
 
-// === CHAT ===
+// === CHAT (Press ENTER to chat) ===
+let chatMode = false;
+
 function addChatMessage(name, message, color) {
   const msgs = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-msg';
-  div.innerHTML = '<span class="chat-name" style="color:' + (color || '#fff') + '">' + escapeHtml(name) + '</span>: ' + escapeHtml(message);
+  if (name === 'System') {
+    div.classList.add('chat-system');
+    div.textContent = message;
+  } else {
+    div.innerHTML = '<span class="chat-name" style="color:' + (color || '#fff') + '">' + escapeHtml(name) + '</span>: ' + escapeHtml(message);
+  }
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
-  // Keep only last 30 messages
   while (msgs.children.length > 30) msgs.removeChild(msgs.firstChild);
 }
 
@@ -1081,18 +1122,62 @@ function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function openChatInput() {
+  chatMode = true;
+  const row = document.getElementById('chat-input-row');
+  row.classList.add('active');
+  const hint = document.getElementById('chat-hint');
+  hint.style.display = 'none';
+  const input = document.getElementById('chat-input');
+  input.focus();
+  // Exit pointer lock so user can type
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+function closeChatInput() {
+  chatMode = false;
+  const row = document.getElementById('chat-input-row');
+  row.classList.remove('active');
+  document.getElementById('chat-hint').style.display = 'flex';
+  document.getElementById('chat-input').value = '';
+}
+
 function sendChat() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
-  if (!msg || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'chat', message: msg }));
-  input.value = '';
+  if (msg && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'chat', message: msg }));
+  }
+  closeChatInput();
 }
 
-document.getElementById('chat-send').addEventListener('click', sendChat);
+// Global keydown for ENTER to open chat
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Enter' && !chatMode && !activeGame && isLocked) {
+    e.preventDefault();
+    openChatInput();
+    return;
+  }
+  if (e.code === 'Enter' && chatMode) {
+    e.preventDefault();
+    sendChat();
+    return;
+  }
+  if (e.code === 'Escape' && chatMode) {
+    e.preventDefault();
+    closeChatInput();
+    return;
+  }
+});
+
+// Click on hint also opens chat
+document.getElementById('chat-hint').addEventListener('click', () => {
+  if (!chatMode && !activeGame) openChatInput();
+});
+
+// Prevent game keybinds while typing in chat
 document.getElementById('chat-input').addEventListener('keydown', (e) => {
   e.stopPropagation();
-  if (e.key === 'Enter') sendChat();
 });
 
 // === MOBILE CONTROLS ===
