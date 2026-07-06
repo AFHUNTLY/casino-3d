@@ -364,6 +364,7 @@ for (let row = 0; row < 2; row++) {
 }
 
 // ===== CARD TABLES =====
+const cardTablePrimitiveGroups = [];
 function makeCardTable(x, z, label) {
   const group = new pc.Entity('table');
   group.setLocalPosition(x, 0, z);
@@ -387,6 +388,7 @@ function makeCardTable(x, z, label) {
   ol.light.ta = olTarget;
 
   app.root.addChild(group);
+  cardTablePrimitiveGroups.push({ entity: group, x, z, label });
   return group;
 }
 
@@ -456,6 +458,35 @@ for (const [px, pz] of pillarPositions) {
 makeBox('arch-l', [-5, 5, RD/2 - 0.5], [1.5, 10, 0.8], matGold);
 makeBox('arch-r', [5, 5, RD/2 - 0.5], [1.5, 10, 0.8], matGold);
 makeBox('arch-top', [0, 10, RD/2 - 0.5], [11.5, 1.5, 0.8], matGold);
+
+// ===== LOGICAL ZONE DRESSING =====
+// Entrance velvet ropes guide players from spawn to the Lucky Wheel focal point.
+function makeVelvetRopeLine(x, z1, z2) {
+  for (let z = z1; z >= z2; z -= 4) {
+    makeCylinder('stanchion', [x, 0.55, z], [0.08, 1.1, 0.08], matGold);
+    makeSphere('stanchion-cap', [x, 1.15, z], [0.18, 0.18, 0.18], matGold);
+  }
+  makeBox('velvet-rope', [x, 1.05, (z1 + z2) / 2], [0.10, 0.10, Math.abs(z1 - z2)], matGlowRed);
+}
+makeVelvetRopeLine(-5.8, RD/2 - 5, 18);
+makeVelvetRopeLine(5.8, RD/2 - 5, 18);
+
+// Casino zone floor accents: podium, tables, inside track lounge.
+makeCylinder('podium-ring', [0, 0.08, 15], [4.2, 0.05, 4.2], makeMat(rgb(0x1c0a0a), rgb(0xffd700), 0.18, 0.3, 0.4));
+makeBox('table-pit-carpet', [0, 0.075, 13], [26, 0.035, 18], makeMat(rgb(0x083015), null, 0, 0, 0.8));
+makeBox('inside-track-carpet', [0, 0.08, -17], [24, 0.035, 12], makeMat(rgb(0x081428), rgb(0x001144), 0.12, 0, 0.8));
+
+// Overhead table-pit feature lamps to make the card area read as one grouped zone.
+for (const [lx, lz] of [[-10,8],[10,8],[-10,18],[10,18]]) {
+  makeCylinder('table-lamp-chain', [lx, 5.2, lz], [0.04, 2.0, 0.04], matGold);
+  makeCylinder('table-lamp-shade', [lx, 3.7, lz], [1.2, 0.35, 1.2], matGold);
+  makeSphere('table-lamp-glow', [lx, 3.35, lz], [0.55, 0.25, 0.55], matGlowGold);
+}
+
+// Zone color strips communicate where each activity lives.
+makeBox('slots-left-zone-strip', [-18, 0.12, 0], [0.18, 0.08, 38], matGlowBlue);
+makeBox('slots-right-zone-strip', [18, 0.12, 0], [0.18, 0.08, 38], matGlowPink);
+makeBox('inside-track-zone-strip', [0, 0.12, -10.8], [20, 0.08, 0.18], matGlowGreen);
 
 // ===== LUCKY WHEEL (GTA V Podium Vehicle style) =====
 const luckyWheel = new pc.Entity('lucky-wheel');
@@ -893,7 +924,6 @@ function replacePrimitiveSlotsWithGLB() {
     loadContainerAsset('slot-jackpot-glb', '/assets/models/slot-jackpot.glb', (jackpotAsset) => {
       for (const info of slotPrimitiveGroups) {
         const asset = (info.variant % 2 === 0) ? slotAsset : jackpotAsset;
-        // Keep primitive slots as invisible fallback/colliders until GLB is visible.
         info.entity.enabled = false;
         const model = instantiateContainer(
           asset,
@@ -909,7 +939,48 @@ function replacePrimitiveSlotsWithGLB() {
   });
 }
 
+function replaceCardTablesWithGLB() {
+  loadContainerAsset('blackjack-table-glb', '/assets/models/blackjack-table.glb', (tableAsset) => {
+    let n = 0;
+    for (const info of cardTablePrimitiveGroups) {
+      info.entity.enabled = false;
+      const model = instantiateContainer(
+        tableAsset,
+        'glb-card-table-' + info.label + '-' + n,
+        [info.x, 0.02, info.z],
+        [0, info.label === 'PKR' ? 180 : 0, 0],
+        [1.15, 1.15, 1.15]
+      );
+      if (model) n++;
+    }
+    console.log('[Assets] Replaced', n, 'primitive card tables with GLB blackjack/poker tables');
+  });
+}
+
+function addInsideTrackHorseModels() {
+  loadContainerAsset('horse-low-poly-glb', '/assets/models/horse-low-poly.glb', (horseAsset) => {
+    const colors = [matGlowRed, matGlowBlue, matGlowGold, matGlowPink, matGlowGreen, matGlowWhite];
+    for (let i = 0; i < 6; i++) {
+      const x = -7.5 + i * 3;
+      const z = -14.5;
+      const horse = instantiateContainer(
+        horseAsset,
+        'inside-track-horse-' + (i + 1),
+        [x, 0.08, z],
+        [0, 90, 0],
+        [0.75, 0.75, 0.75]
+      );
+      // Add colored lane marker / betting number under each horse.
+      makeBox('horse-lane-' + i, [x, 0.04, z + 1.2], [2.0, 0.04, 0.16], colors[i % colors.length]);
+      makeBox('horse-plinth-' + i, [x, 0.08, z], [1.8, 0.08, 1.0], matDarkWood);
+    }
+    console.log('[Assets] Added 6 Inside Track horse GLB display models');
+  });
+}
+
 replacePrimitiveSlotsWithGLB();
+replaceCardTablesWithGLB();
+addInsideTrackHorseModels();
 
 // ===== PERFORMANCE OPTIMIZATION =====
 // Detect mobile / low-end devices and reduce quality
