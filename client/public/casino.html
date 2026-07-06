@@ -21,10 +21,7 @@ canvas{display:block;width:100%;height:100%}
 .crosshair::before,.crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.5)}
 .crosshair::before{width:2px;height:100%;left:50%;transform:translateX(-50%)}
 .crosshair::after{width:100%;height:2px;top:50%;transform:translateY(-50%)}
-#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);cursor:pointer;backdrop-filter:blur(2px);z-index:200}
-#overlay-box{background:rgba(20,20,30,.9);border:1px solid rgba(255,215,0,.25);border-radius:12px;padding:24px 40px;text-align:center}
-#overlay-title{font-size:28px;font-weight:700;color:#ffd700;display:block}
-#overlay-hint{font-size:14px;color:#888;margin-top:8px;display:block}
+#overlay{display:none!important}
 #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#1a1a2e,#0a0a0a);z-index:999}
 #loading-title{font-size:48px;font-weight:800;background:linear-gradient(135deg,#ffd700,#ff6b6b,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;margin-bottom:16px}
 #loading-sub{color:#888;font-size:16px}
@@ -98,12 +95,7 @@ canvas{display:block;width:100%;height:100%}
 </div>
 <div class="crosshair" id="crosshair" style="display:none"></div>
 <div id="game-prompt"><kbd>E</kbd><span id="game-prompt-text">Play</span></div>
-<div id="overlay">
-<div id="overlay-box">
-<span id="overlay-title">CLICK TO ENTER</span>
-<span id="overlay-hint">WASD to walk • Mouse to look • ESC to release • Shift to sprint<br><b style="color:#8af">Press E near a game to play</b></span>
-</div>
-</div>
+<div id="overlay" aria-hidden="true"></div>
 </div>
 
 <div id="game-modal">
@@ -584,7 +576,6 @@ document.addEventListener('mousemove', (e) => {
 
 document.addEventListener('pointerlockchange', () => {
   isLocked = document.pointerLockElement === canvas;
-  document.getElementById('overlay').style.display = isLocked ? 'none' : 'flex';
   document.getElementById('crosshair').style.display = isLocked ? 'block' : 'none';
 });
 
