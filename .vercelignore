@@ -1,0 +1,9 @@
+assets_raw/
+node_modules/
+.git/
+*.zip
+*.blend
+*.fbx
+*.obj
+*.mtl
+*.psd
