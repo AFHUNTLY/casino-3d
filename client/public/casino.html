@@ -320,6 +320,8 @@ for (const [cx, cz] of [[-15,-15],[15,-15],[-15,15],[15,15],[0,0]]) {
 }
 
 // ===== SLOT MACHINES =====
+const slotPrimitiveGroups = [];
+const glbSlotEntities = [];
 function makeSlotMachine(x, z, rotY, variant) {
   const cab = slotCabinets[variant % 4];
   const group = new pc.Entity('slot');
@@ -344,6 +346,7 @@ function makeSlotMachine(x, z, rotY, variant) {
   group.addChild(makeBox('base', [0, 0.15, 0], [1.5, 0.3, 1.2], matDarkWood));
 
   app.root.addChild(group);
+  slotPrimitiveGroups.push({ entity: group, x, z, rotY, variant });
   return group;
 }
 
@@ -850,6 +853,63 @@ window.addEventListener('resize', () => {
   app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
   app.resizeCanvas();
 });
+
+// ===== GLB ASSET LOADING (real casino models) =====
+function loadContainerAsset(name, url, onReady) {
+  const asset = new pc.Asset(name, 'container', { url });
+  app.assets.add(asset);
+  asset.ready(() => {
+    try {
+      console.log('[Assets] Loaded', name, url);
+      onReady(asset);
+    } catch (e) {
+      console.error('[Assets] Failed to instantiate', name, e);
+    }
+  });
+  app.assets.load(asset);
+  return asset;
+}
+
+function instantiateContainer(asset, name, pos, rot, scale) {
+  let e;
+  if (asset.resource && asset.resource.instantiateRenderEntity) {
+    e = asset.resource.instantiateRenderEntity();
+  } else if (asset.resource && asset.resource.instantiateModelEntity) {
+    e = asset.resource.instantiateModelEntity();
+  } else {
+    console.warn('[Assets] No instantiate method for', asset.name);
+    return null;
+  }
+  e.name = name;
+  e.setLocalPosition(pos[0], pos[1], pos[2]);
+  e.setLocalEulerAngles(rot[0], rot[1], rot[2]);
+  e.setLocalScale(scale[0], scale[1], scale[2]);
+  app.root.addChild(e);
+  return e;
+}
+
+function replacePrimitiveSlotsWithGLB() {
+  loadContainerAsset('slot-machine-glb', '/assets/models/slot-machine.glb', (slotAsset) => {
+    loadContainerAsset('slot-jackpot-glb', '/assets/models/slot-jackpot.glb', (jackpotAsset) => {
+      for (const info of slotPrimitiveGroups) {
+        const asset = (info.variant % 2 === 0) ? slotAsset : jackpotAsset;
+        // Keep primitive slots as invisible fallback/colliders until GLB is visible.
+        info.entity.enabled = false;
+        const model = instantiateContainer(
+          asset,
+          'glb-slot-' + info.variant,
+          [info.x, 0.05, info.z],
+          [0, info.rotY + 180, 0],
+          [1.35, 1.35, 1.35]
+        );
+        if (model) glbSlotEntities.push(model);
+      }
+      console.log('[Assets] Replaced', glbSlotEntities.length, 'primitive slots with GLB models');
+    });
+  });
+}
+
+replacePrimitiveSlotsWithGLB();
 
 // ===== PERFORMANCE OPTIMIZATION =====
 // Detect mobile / low-end devices and reduce quality
