@@ -15,6 +15,8 @@ canvas{display:block;width:100%;height:100%}
 .wallet{display:flex;align-items:center;gap:12px;background:rgba(20,20,30,.85);border:1px solid rgba(255,215,0,.25);border-radius:8px;padding:8px 16px;backdrop-filter:blur(10px)}
 .wallet-addr{font-family:monospace;font-size:13px;color:#aaa}
 .wallet-bal{font-size:15px;font-weight:700;color:#ffd700}
+.chips-pill{font-size:14px;font-weight:900;color:#080500;background:linear-gradient(135deg,#ffd700,#ff9500);padding:8px 13px;border-radius:999px;box-shadow:0 0 18px rgba(255,215,0,.18);white-space:nowrap}
+.cashier-btn{background:rgba(255,215,0,.12);color:#ffd700;border:1px solid rgba(255,215,0,.35);padding:9px 14px;border-radius:999px;font-size:13px;font-weight:800;cursor:pointer}
 .connect-btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:11px 26px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
 .connect-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(99,102,241,.4)}
 .crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:16px;height:16px;pointer-events:none;z-index:50}
@@ -93,6 +95,8 @@ canvas{display:block;width:100%;height:100%}
 <div id="ui">
 <div class="topbar">
 <div class="logo">💎 DIAMOND CASINO</div>
+<div class="chips-pill" id="chipsDisplay">🪙 1,000 CHIPS</div>
+<button class="cashier-btn" id="cashierBtn">Cashier</button>
 <button class="connect-btn" id="connectBtn">🦊 Connect Wallet</button>
 <div class="wallet" id="walletDisplay" style="display:none">
 <span class="wallet-addr" id="walletAddr"></span>
@@ -558,7 +562,7 @@ makeBox('inside-track-zone-strip', [0, 0.12, -10.8], [20, 0.08, 0.18], matGlowGr
 
 // ===== LUCKY WHEEL (GTA V Podium Vehicle style) =====
 const luckyWheel = new pc.Entity('lucky-wheel');
-luckyWheel.setLocalPosition(0, 0, 17.0);
+luckyWheel.setLocalPosition(0, 0, 11.6);
 // Base platform
 luckyWheel.addChild(makeCylinder('lw-base', [0, 0.15, 0], [2, 0.3, 2], matDarkWood));
 luckyWheel.addChild(makeCylinder('lw-pole', [0, 1.0, 0], [0.3, 1.4, 0.3], matGold));
@@ -618,8 +622,11 @@ for (let i = 0; i < 8; i++) {
 }
 let luckyWheelGLBEntity = null;
 let luckyWheelGLBWheelEntity = null;
-// Pointer at top
-luckyWheel.addChild(makeBox('lw-pointer', [0, 3.8, 0.4], [0.2, 0.3, 0.1], matGold, [0, 0, 180]));
+// Fixed pointer/result above the wheel. The wheel rotates under this marker.
+luckyWheel.addChild(makeBox('lw-pointer', [0, 4.05, 0.62], [0.16, 0.58, 0.12], matGlowGold));
+luckyWheel.addChild(makeBox('lw-pointer-tip', [0, 3.67, 0.62], [0.52, 0.14, 0.12], matGlowGold));
+const luckyWheelResultMarker = makeBox('lw-result-marker', [0, 4.78, 0.14], [2.2, 0.16, 0.12], matGlowGold);
+luckyWheel.addChild(luckyWheelResultMarker);
 // Sign
 luckyWheel.addChild(makeBox('lw-sign', [0, 4.4, 0], [3, 0.6, 0.2], makeMat(rgb(0x000000), rgb(0xffd700), 1.5, 0, 0.3)));
 // Spotlight
@@ -842,6 +849,78 @@ function setModalSub(text) {
   document.getElementById('game-modal-sub').textContent = text;
 }
 
+// ===== CASINO CHIPS / CASHIER ECONOMY =====
+const USDC_BASE_SEPOLIA = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+// Configure these after deploying treasury + CHIPS token contracts. Until then,
+// cashier uses demo mint mode so gameplay economy can be tested safely.
+const CASINO_TREASURY_ADDRESS = '';
+const CHIPS_TOKEN_ADDRESS = '';
+let connectedWallet = null;
+let chipBalance = parseInt(localStorage.getItem('casinoChipBalance') || '1000', 10);
+function updateChipUI() {
+  localStorage.setItem('casinoChipBalance', String(chipBalance));
+  const el = document.getElementById('chipsDisplay');
+  if (el) el.textContent = '🪙 ' + chipBalance.toLocaleString() + ' CHIPS';
+}
+function addChips(amount) { chipBalance += amount; updateChipUI(); }
+function placeChipBet(amount, label = 'bet') {
+  if (chipBalance < amount) {
+    alert(`Not enough CHIPS for ${label}. Visit the Cashier.`);
+    return false;
+  }
+  chipBalance -= amount;
+  updateChipUI();
+  return true;
+}
+function openCashier() {
+  setModalSub('Buy casino CHIPS with USDC. On-chain transfer is enabled after treasury/token addresses are configured.');
+  const mode = CASINO_TREASURY_ADDRESS && CHIPS_TOKEN_ADDRESS ? 'ON-CHAIN USDC → CHIPS' : 'DEMO MINT MODE';
+  setModalContent(`
+    <div style="min-width:min(460px,86vw);display:flex;flex-direction:column;gap:14px">
+      <div class="result-box result-pending">${mode}<br>Balance: ${chipBalance.toLocaleString()} CHIPS</div>
+      <div class="bet-row"><label>Wallet</label><b>${connectedWallet ? connectedWallet.slice(0,6)+'...'+connectedWallet.slice(-4) : 'Not connected'}</b></div>
+      <button class="btn-primary" data-usdc="10" data-chips="1000">Buy 1,000 CHIPS · 10 USDC</button>
+      <button class="btn-primary" data-usdc="50" data-chips="5500">Buy 5,500 CHIPS · 50 USDC</button>
+      <button class="btn-primary" data-usdc="100" data-chips="12000">Buy 12,000 CHIPS · 100 USDC</button>
+      <button class="btn-secondary" id="cashier-close">Close</button>
+      <div style="color:#888;font-size:12px;line-height:1.45">USDC Base Sepolia: ${USDC_BASE_SEPOLIA}<br>CHIPS token contract: ${CHIPS_TOKEN_ADDRESS || 'pending deployment'}</div>
+    </div>
+  `);
+  document.querySelectorAll('#game-modal-content [data-chips]').forEach(btn => {
+    btn.addEventListener('click', () => buyChips(Number(btn.dataset.usdc), Number(btn.dataset.chips)));
+  });
+  document.getElementById('cashier-close').addEventListener('click', closeGameModal);
+}
+async function buyChips(usdcAmount, chips) {
+  if (!connectedWallet && window.ethereum) {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    connectedWallet = accounts[0];
+  }
+  if (CASINO_TREASURY_ADDRESS && window.ethereum) {
+    // ERC20 transfer(address,uint256) selector a9059cbb. USDC has 6 decimals.
+    const selector = '0xa9059cbb';
+    const to = CASINO_TREASURY_ADDRESS.replace(/^0x/, '').padStart(64, '0');
+    const amount = BigInt(Math.round(usdcAmount * 1_000_000)).toString(16).padStart(64, '0');
+    await window.ethereum.request({
+      method: 'eth_sendTransaction',
+      params: [{ from: connectedWallet, to: USDC_BASE_SEPOLIA, data: selector + to + amount }]
+    });
+  }
+  addChips(chips);
+  openCashier();
+}
+updateChipUI();
+document.getElementById('cashierBtn').addEventListener('click', () => {
+  activeGame = { name: '🏦 Cashier' };
+  document.getElementById('game-modal').style.display = 'flex';
+  document.getElementById('game-modal-title').textContent = '🏦 Cashier';
+  openCashier();
+});
+// Optional in-world cashier desk near the entrance.
+makeBox('cashier-counter', [-4.5, 0.8, 17.0], [2.6, 1.2, 0.65], matDarkWood);
+makeBox('cashier-sign', [-4.5, 1.75, 16.65], [2.4, 0.38, 0.12], matGlowGold);
+registerGame('🏦 Cashier', [-4.5, 0, 17.0], 3.2, openCashier);
+
 // ===== GAME 1: SLOT MACHINE =====
 // Register all slot machines as interactive. Slots intentionally use the web-style
 // modal UI because the imported jackpot GLBs are static meshes and their reels do
@@ -904,6 +983,7 @@ function openSlots(slotIndex) {
 
 async function spinSlotModal() {
   if (slotModalSpinning) return;
+  if (!placeChipBet(100, 'slot spin')) return;
   slotModalSpinning = true;
   const btn = document.getElementById('slot-web-spin-btn');
   const resultBox = document.getElementById('slot-web-result');
@@ -936,6 +1016,7 @@ async function spinSlotModal() {
       const jackpot = result[0] === result[1] && result[1] === result[2];
       const pair = result[0] === result[1] || result[1] === result[2] || result[0] === result[2];
       const payout = jackpot ? slotPayouts[slotSymbols[result[0]]] * 100 : pair ? 150 : 0;
+      if (payout > 0) addChips(payout);
       if (resultBox) {
         resultBox.className = 'slot-web-result ' + (payout > 0 ? 'result-win' : 'result-lose');
         resultBox.textContent = jackpot ? `JACKPOT! +${payout} CHIPS` : pair ? `PAIR! +${payout} CHIPS` : 'No win — try again';
@@ -959,7 +1040,7 @@ const wheelSegments = [
   { label: '🥇 Jackpot!', color: '#ffff00', multiplier: 100 },
 ];
 
-registerGame('🎡 Lucky Wheel', [0, 0, 17.0], 4, openLuckyWheel, { worldInteract: true });
+registerGame('🎡 Lucky Wheel', [0, 0, 11.6], 4, openLuckyWheel, { worldInteract: true });
 
 let luckyWheelWorldSpinning = false;
 function openLuckyWheel() {
@@ -968,10 +1049,11 @@ function openLuckyWheel() {
 
 async function spinLuckyWheelWorld() {
   if (luckyWheelWorldSpinning) return;
+  if (!placeChipBet(100, 'Lucky Wheel spin')) { activeGame = null; return; }
   luckyWheelWorldSpinning = true;
   const { segment, hash, nonce } = await ProvablyFair.rollWheel(8);
   const win = wheelSegments[segment];
-  const resultMat = win.multiplier >= 25 ? matGlowGold : win.multiplier >= 10 ? matGlowGreen : matGlowBlue;
+  const resultMat = wheelSegColors[segment] || (win.multiplier >= 25 ? matGlowGold : win.multiplier >= 10 ? matGlowGreen : matGlowBlue);
   const sign = luckyWheel.findByName('lw-sign');
   const mi = sign && sign.model && sign.model.meshInstances[0];
   if (mi) mi.material = matGlowWhite;
@@ -995,6 +1077,9 @@ async function spinLuckyWheelWorld() {
     if (t >= 1) {
       app.off('update', spinUpdate);
       if (mi) mi.material = resultMat;
+      const rmi = luckyWheelResultMarker && luckyWheelResultMarker.model && luckyWheelResultMarker.model.meshInstances[0];
+      if (rmi) rmi.material = resultMat;
+      addChips(100 * win.multiplier);
       console.log('[Lucky Wheel 3D]', { segment, prize: win.label, nonce, hash: hash.slice(0, 16) });
       setTimeout(() => {
         activeGame = null;
@@ -1207,6 +1292,7 @@ function endInsideTrackCinematic() {
 
 async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackHorse) {
   if (insideTrackWorldRunning) return;
+  if (!placeChipBet(insideTrackBetAmount, 'Inside Track bet')) { activeGame = null; return; }
   insideTrackWorldRunning = true;
   const { finishOrder, hash, nonce } = await ProvablyFair.rollHorseRace(insideTrackHorses.length);
   beginInsideTrackCinematic();
@@ -1281,6 +1367,7 @@ async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackH
       const pickedWon = selectedHorseIndex === winner;
       const payout = pickedWon ? Math.floor(insideTrackBetAmount * insideTrackHorses[winner].odds) : 0;
       if (insideTrackRaceNoiseStop) { insideTrackRaceNoiseStop(); insideTrackRaceNoiseStop = null; }
+      if (payout > 0) addChips(payout);
       playInsideTrackResultAudio(pickedWon);
       if (signMi) signMi.material = pickedWon ? matGlowGreen : matGlowRed;
       for (let i = 0; i < insideTrackWorldLanePulses.length; i++) {
@@ -1334,12 +1421,15 @@ function animateEntitySpin(entity, duration, axis, totalDegrees, onDone) {
 
 async function openDiceRoll() {
   if (diceGameRunning) return;
+  if (!placeChipBet(100, 'Dice Roll')) { activeGame = null; return; }
   diceGameRunning = true;
   const { segment, hash, nonce } = await ProvablyFair.rollWheel(6);
   const roll = segment + 1;
   setEntityMaterial(diceResultBeacon, matGlowGold);
   animateEntitySpin(diceGLBEntity, 2.1, 'x', 720 + roll * 90, () => {
-    setEntityMaterial(diceResultBeacon, roll >= 4 ? matGlowGreen : matGlowRed);
+    const diceWin = roll >= 4;
+    setEntityMaterial(diceResultBeacon, diceWin ? matGlowGreen : matGlowRed);
+    if (diceWin) addChips(200);
     console.log('[Dice Roll 3D]', { roll, win: roll >= 4, nonce, hash: hash.slice(0, 16) });
     setTimeout(() => { activeGame = null; diceGameRunning = false; }, 1800);
   });
@@ -1347,12 +1437,15 @@ async function openDiceRoll() {
 
 async function openCoinFlip() {
   if (coinGameRunning) return;
+  if (!placeChipBet(100, 'Coin Flip')) { activeGame = null; return; }
   coinGameRunning = true;
   const { segment, hash, nonce } = await ProvablyFair.rollWheel(2);
   const side = segment === 0 ? 'HEADS' : 'TAILS';
   setEntityMaterial(coinResultBeacon, matGlowGold);
   animateEntitySpin(coinGLBEntity, 1.9, 'x', 1080 + segment * 180, () => {
-    setEntityMaterial(coinResultBeacon, segment === 0 ? matGlowGreen : matGlowBlue);
+    const coinWin = segment === 0;
+    setEntityMaterial(coinResultBeacon, coinWin ? matGlowGreen : matGlowBlue);
+    if (coinWin) addChips(200);
     console.log('[Coin Flip 3D]', { side, nonce, hash: hash.slice(0, 16) });
     setTimeout(() => { activeGame = null; coinGameRunning = false; }, 1600);
   });
@@ -1401,6 +1494,7 @@ function renderBlackjack() {
 }
 async function openBlackjack() {
   setModalSub('Provably fair deck from HMAC-SHA256 · dealer stands on 17');
+  if (!placeChipBet(100, 'Blackjack hand')) { closeGameModal(); return; }
   const { cards, hash, nonce } = await ProvablyFair.rollCards(10);
   blackjackState = { deck: cards, cursor: 4, player: [cards[0], cards[2]], dealer: [cards[1], cards[3]], hash, nonce, done: false };
   renderBlackjack();
@@ -1415,6 +1509,8 @@ function finishBlackjack() {
   blackjackState.done = true;
   blackjackState.win = pv <= 21 && (dv > 21 || pv > dv);
   blackjackState.push = pv <= 21 && pv === dv;
+  if (blackjackState.win) addChips(200);
+  if (blackjackState.push) addChips(100);
   blackjackState.message = blackjackState.win ? 'YOU WIN +200 CHIPS' : blackjackState.push ? 'PUSH — BET RETURNED' : 'DEALER WINS';
   renderBlackjack();
   console.log('[Blackjack] result', { player: pv, dealer: dv, win: blackjackState.win, push: blackjackState.push });
