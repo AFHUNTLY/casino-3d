@@ -576,6 +576,7 @@ const wheelSegColors = [
   makeMat(rgb(0x000000), rgb(0xffff00), 1.5, 0, 0.3),   // 7 yellow
 ];
 const wheelRadius = 1.8;
+const luckyWheelPrizeShortLabels = ['50x', 'NFT', '10x', 'BOX', 'VIP', '3x', '2x', '100x'];
 for (let i = 0; i < 8; i++) {
   const angle = (i / 8) * Math.PI * 2;
   const seg = makeBox('lw-seg-' + i,
@@ -590,6 +591,29 @@ for (let i = 0; i < 8; i++) {
 luckyWheelSpinRoot.addChild(makeTorus('lw-ring', [0, 2.0, 0], [wheelRadius * 2, 1, wheelRadius * 2], matGold, [90, 0, 0]));
 // Wheel center hub
 luckyWheelSpinRoot.addChild(makeCylinder('lw-hub', [0, 2.0, 0.2], [0.35, 0.15, 0.35], matGold));
+const luckyWheelPrizeMarkers = [];
+for (let i = 0; i < 8; i++) {
+  const angle = (i / 8) * Math.PI * 2;
+  const px = Math.cos(angle) * wheelRadius * 0.78;
+  const py = 2.0 + Math.sin(angle) * wheelRadius * 0.78;
+  const marker = makeBox('lw-prize-marker-' + i, [px, py, 0.46], [0.46, 0.18, 0.08], wheelSegColors[i]);
+  marker.setLocalEulerAngles(0, 0, (i / 8) * 360);
+  luckyWheelSpinRoot.addChild(marker);
+  const label = new pc.Entity('lw-prize-label-' + i);
+  label.addComponent('text', {
+    text: luckyWheelPrizeShortLabels[i],
+    fontSize: 0.25,
+    color: new pc.Color(0.03, 0.02, 0.01),
+    outlineThickness: 0.015,
+    outlineColor: new pc.Color(1, 0.85, 0)
+  });
+  label.setLocalPosition(px - 0.17, py - 0.08, 0.55);
+  label.setLocalScale(0.8, 0.8, 0.8);
+  label.setLocalEulerAngles(0, 0, (i / 8) * 360);
+  luckyWheelSpinRoot.addChild(label);
+  luckyWheelPrizeMarkers.push(marker, label);
+}
+let luckyWheelGLBEntity = null;
 // Pointer at top
 luckyWheel.addChild(makeBox('lw-pointer', [0, 3.8, 0.4], [0.2, 0.3, 0.1], matGold, [0, 0, 180]));
 // Sign
@@ -949,13 +973,19 @@ async function spinLuckyWheelWorld() {
   if (mi) mi.material = matGlowWhite;
 
   const start = luckyWheelSpinRoot.getLocalEulerAngles().z;
-  const target = start + 360 * 6 + (segment / 8) * 360;
+  const normalizedStart = ((start % 360) + 360) % 360;
+  const segmentAngle = (segment / 8) * 360;
+  const desiredAtPointer = 90;
+  const correction = ((desiredAtPointer - segmentAngle - normalizedStart) % 360 + 360) % 360;
+  const target = start + 360 * 7 + correction;
   let elapsed = 0;
-  const duration = 3.2;
+  const duration = 4.2;
   const spinUpdate = (dt) => {
     elapsed += dt;
     const t = Math.min(1, elapsed / duration);
-    const eased = 1 - Math.pow(1 - t, 3);
+    const eased = t < 0.82
+      ? 1 - Math.pow(1 - t / 0.82, 3)
+      : 1 + Math.sin((t - 0.82) / 0.18 * Math.PI) * 0.018;
     luckyWheelSpinRoot.setLocalEulerAngles(0, 0, start + (target - start) * eased);
     if (t >= 1) {
       app.off('update', spinUpdate);
@@ -1155,9 +1185,9 @@ function updateInsideTrackCinematic(elapsed, countdown, duration) {
   const camZ = -7.9 - introT * 1.25 - raceT * 0.45;
   camera.setLocalPosition(camX, camY, camZ);
   camera.camera.fov = 60 - introT * 7 + Math.sin(raceT * Math.PI) * 2;
-  const yawOffset = Math.sin(elapsed * 0.75) * 1.2;
-  const pitchDeg = -4.5 + Math.sin(elapsed * 1.1) * 0.6;
-  camera.setLocalEulerAngles(pitchDeg, 180 + yawOffset, 0);
+  const targetX = Math.sin(elapsed * 0.75) * 0.16;
+  const targetY = 4.95 + Math.sin(elapsed * 1.1) * 0.06;
+  camera.lookAt(targetX, targetY, -15.8);
 }
 
 function endInsideTrackCinematic() {
@@ -1266,7 +1296,64 @@ async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackH
   app.on('update', raceUpdate);
 }
 
-// ===== GAME 4: ROULETTE =====
+// ===== GAME 4: DICE + COIN FLIP (new Sketchfab-backed quick games) =====
+let diceGLBEntity = null;
+let coinGLBEntity = null;
+let diceGameRunning = false;
+let coinGameRunning = false;
+const diceResultBeacon = makeBox('dice-result-beacon', [-4.3, 1.8, 6.5], [1.4, 0.16, 0.16], matGlowBlue);
+const coinResultBeacon = makeBox('coin-result-beacon', [4.3, 1.8, 6.5], [1.4, 0.16, 0.16], matGlowGold);
+registerGame('🎲 Dice Roll', [-4.3, 0, 6.5], 3.8, openDiceRoll, { worldInteract: true });
+registerGame('🪙 Coin Flip', [4.3, 0, 6.5], 3.8, openCoinFlip, { worldInteract: true });
+
+function animateEntitySpin(entity, duration, axis, totalDegrees, onDone) {
+  let elapsed = 0;
+  const start = entity ? entity.getLocalEulerAngles().clone() : new pc.Vec3();
+  const spinUpdate = (dt) => {
+    elapsed += dt;
+    const t = Math.min(1, elapsed / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    if (entity) {
+      const x = start.x + (axis === 'x' ? totalDegrees * eased : 0);
+      const y = start.y + (axis === 'y' ? totalDegrees * eased : 0);
+      const z = start.z + (axis === 'z' ? totalDegrees * eased : 0);
+      entity.setLocalEulerAngles(x, y, z);
+    }
+    if (t >= 1) {
+      app.off('update', spinUpdate);
+      if (onDone) onDone();
+    }
+  };
+  app.on('update', spinUpdate);
+}
+
+async function openDiceRoll() {
+  if (diceGameRunning) return;
+  diceGameRunning = true;
+  const { segment, hash, nonce } = await ProvablyFair.rollWheel(6);
+  const roll = segment + 1;
+  setEntityMaterial(diceResultBeacon, matGlowGold);
+  animateEntitySpin(diceGLBEntity, 2.1, 'x', 720 + roll * 90, () => {
+    setEntityMaterial(diceResultBeacon, roll >= 4 ? matGlowGreen : matGlowRed);
+    console.log('[Dice Roll 3D]', { roll, win: roll >= 4, nonce, hash: hash.slice(0, 16) });
+    setTimeout(() => { activeGame = null; diceGameRunning = false; }, 1800);
+  });
+}
+
+async function openCoinFlip() {
+  if (coinGameRunning) return;
+  coinGameRunning = true;
+  const { segment, hash, nonce } = await ProvablyFair.rollWheel(2);
+  const side = segment === 0 ? 'HEADS' : 'TAILS';
+  setEntityMaterial(coinResultBeacon, matGlowGold);
+  animateEntitySpin(coinGLBEntity, 1.9, 'x', 1080 + segment * 180, () => {
+    setEntityMaterial(coinResultBeacon, segment === 0 ? matGlowGreen : matGlowBlue);
+    console.log('[Coin Flip 3D]', { side, nonce, hash: hash.slice(0, 16) });
+    setTimeout(() => { activeGame = null; coinGameRunning = false; }, 1600);
+  });
+}
+
+// ===== GAME 6: ROULETTE =====
 const rouletteRedNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 registerGame('🎲 Roulette', [0, 0, 1.5], 4.2, openRoulette, { worldInteract: true });
 
@@ -1407,6 +1494,65 @@ function hideLegacyEnvironmentPrimitives() {
   console.log('[Assets] Hidden legacy primitive environment entities:', hidden);
 }
 
+function instantiateContainerChild(asset, parent, name, pos, rot, scale) {
+  let e;
+  if (asset.resource && asset.resource.instantiateRenderEntity) {
+    e = asset.resource.instantiateRenderEntity();
+  } else if (asset.resource && asset.resource.instantiateModelEntity) {
+    e = asset.resource.instantiateModelEntity();
+  } else {
+    console.warn('[Assets] No instantiate method for', asset.name);
+    return null;
+  }
+  e.name = name;
+  e.setLocalPosition(pos[0], pos[1], pos[2]);
+  e.setLocalEulerAngles(rot[0], rot[1], rot[2]);
+  e.setLocalScale(scale[0], scale[1], scale[2]);
+  parent.addChild(e);
+  return e;
+}
+
+function replaceLuckyWheelWithGLB() {
+  loadContainerAsset('lucky-wheel-low-poly-spinning-wheel-glb', '/assets/models/lucky-wheel-low-poly-spinning-wheel.glb', (wheelAsset) => {
+    const oldNames = new Set(['lw-seg-0','lw-seg-1','lw-seg-2','lw-seg-3','lw-seg-4','lw-seg-5','lw-seg-6','lw-seg-7','lw-ring','lw-hub']);
+    for (const child of luckyWheelSpinRoot.children || []) {
+      if (oldNames.has(child.name)) child.enabled = false;
+    }
+    luckyWheelGLBEntity = instantiateContainerChild(
+      wheelAsset,
+      luckyWheelSpinRoot,
+      'glb-lucky-wheel-low-poly-spinning-wheel',
+      [0, 0.10, 0.22],
+      [0, 0, 0],
+      [2.35, 2.35, 2.35]
+    );
+    if (luckyWheelGLBEntity) console.log('[Assets] Replaced procedural Lucky Wheel with GLB spinning wheel');
+  });
+}
+
+function addDiceAndCoinGLBs() {
+  loadContainerAsset('dice-casino-chips-glb', '/assets/models/dice-f7ac7a2d.glb', (diceAsset) => {
+    diceGLBEntity = instantiateContainer(
+      diceAsset,
+      'glb-dice-casino-chips',
+      [-4.3, 0.92, 6.5],
+      [0, -25, 0],
+      [9.5, 9.5, 9.5]
+    );
+    if (diceGLBEntity) console.log('[Assets] Added Sketchfab dice/chips model for Dice Roll');
+  });
+  loadContainerAsset('coin-low-poly-gold-glb', '/assets/models/coin-7a40d686.glb', (coinAsset) => {
+    coinGLBEntity = instantiateContainer(
+      coinAsset,
+      'glb-low-poly-gold-coin',
+      [4.3, 1.05, 6.5],
+      [90, 0, 0],
+      [0.34, 0.34, 0.34]
+    );
+    if (coinGLBEntity) console.log('[Assets] Added Sketchfab gold coin model for Coin Flip');
+  });
+}
+
 function replaceRouletteWithGLB() {
   loadContainerAsset('roulette-table-web-glb', '/assets/models/roulette-table-web.glb', (rouletteAsset) => {
     rou.enabled = false;
@@ -1439,6 +1585,8 @@ function hidePrototypeGameProps() {
 
 addFullCasinoSceneGLB();
 hidePrototypeGameProps();
+replaceLuckyWheelWithGLB();
+addDiceAndCoinGLBs();
 replaceRouletteWithGLB();
 
 // ===== PERFORMANCE OPTIMIZATION =====
