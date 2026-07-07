@@ -80,7 +80,11 @@ canvas{display:block;width:100%;height:100%}
 #look-area{position:fixed;bottom:0;right:0;width:50%;height:60%;pointer-events:auto;touch-action:none}
 #mobile-play-btn{position:fixed;right:22px;bottom:210px;display:none;min-width:118px;padding:15px 18px;border-radius:999px;border:1px solid rgba(255,215,0,.55);background:linear-gradient(135deg,#ffd700,#ff9500);color:#080500;font-size:16px;font-weight:900;letter-spacing:.6px;box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 22px rgba(255,215,0,.25);pointer-events:auto;touch-action:manipulation;z-index:111}
 #mobile-play-btn:active{transform:scale(.96)}
+#mobile-horse-panel{position:fixed;top:86px;left:12px;right:12px;display:none;pointer-events:auto;z-index:112;padding:12px;border-radius:20px;background:linear-gradient(145deg,rgba(10,7,12,.88),rgba(34,20,4,.78));border:1px solid rgba(255,215,0,.35);box-shadow:0 18px 45px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(14px);touch-action:manipulation}
+#mobile-horse-panel::before{content:'';position:absolute;inset:0;border-radius:20px;background:radial-gradient(circle at 20% 0%,rgba(255,215,0,.18),transparent 35%),radial-gradient(circle at 90% 20%,rgba(0,212,255,.12),transparent 32%);pointer-events:none}
+.mobile-horse-head{position:relative;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.mobile-horse-title{font-size:13px;font-weight:900;color:#ffd700;letter-spacing:.8px;text-transform:uppercase}.mobile-horse-sub{font-size:11px;color:#c9b56a;white-space:nowrap}.mobile-horse-grid{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mobile-horse-card{border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:8px 7px;background:rgba(255,255,255,.055);color:#eee;min-height:58px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);transition:transform .12s,border-color .12s,background .12s;touch-action:manipulation}.mobile-horse-card:active{transform:scale(.97)}.mobile-horse-card.selected{border-color:rgba(255,215,0,.9);background:linear-gradient(145deg,rgba(255,215,0,.24),rgba(255,149,0,.10));box-shadow:0 0 20px rgba(255,215,0,.18),inset 0 0 0 1px rgba(255,215,0,.18)}.mobile-horse-no{font-size:12px;font-weight:900;color:#ffd700}.mobile-horse-name{font-size:11px;font-weight:800;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobile-horse-odds{margin-top:4px;font-family:monospace;font-size:12px;font-weight:900;color:#5cff9a}.mobile-horse-race{position:relative;width:100%;margin-top:10px;padding:13px;border:0;border-radius:16px;background:linear-gradient(135deg,#ffd700,#ff9500);color:#090500;font-size:15px;font-weight:950;letter-spacing:.9px;box-shadow:0 10px 30px rgba(255,149,0,.24);touch-action:manipulation}.mobile-horse-race:active{transform:scale(.985)}
 @media (pointer:coarse) and (max-width:1024px){#mobile-controls{display:block} .crosshair{display:none!important} #game-prompt kbd{display:none} #game-prompt{bottom:24%;font-size:14px;padding:9px 16px;max-width:82vw;text-align:center} #joystick{left:22px;bottom:82px;width:112px;height:112px} #look-area{width:56%;height:58%;right:0;bottom:0} #mobile-play-btn{right:20px;bottom:172px} #game-modal{align-items:flex-end;padding:10px} #game-modal-box{min-width:0;width:100%;max-width:100%;max-height:78vh;border-radius:16px 16px 10px 10px;padding:20px 16px} #game-modal-title{font-size:20px}.bet-row{flex-direction:column;align-items:flex-start;gap:6px}.bet-row input,.bet-row select{width:100%!important}.btn-primary{padding:14px;font-size:17px}.btn-secondary{padding:13px}}
+@media (pointer:coarse) and (max-width:380px){#mobile-horse-panel{top:78px;padding:10px}.mobile-horse-grid{gap:6px}.mobile-horse-card{min-height:52px;padding:7px 6px}.mobile-horse-name{font-size:10px}.mobile-horse-race{padding:11px}}
 </style>
 </head>
 <body>
@@ -121,6 +125,11 @@ canvas{display:block;width:100%;height:100%}
 <div id="mobile-controls">
 <div id="joystick"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
 <div id="look-area"></div>
+<div id="mobile-horse-panel" aria-hidden="true">
+  <div class="mobile-horse-head"><div class="mobile-horse-title">🏇 Inside Track</div><div class="mobile-horse-sub">Tap a horse</div></div>
+  <div class="mobile-horse-grid" id="mobile-horse-grid"></div>
+  <button class="mobile-horse-race" id="mobile-horse-race" type="button">START RACE</button>
+</div>
 <button id="mobile-play-btn" type="button">PLAY</button>
 </div>
 
@@ -752,14 +761,17 @@ function checkNearbyGames() {
     prompt.style.display = 'block';
     const promptText = closest.promptText ? closest.promptText() : ('Play ' + closest.name);
     document.getElementById('game-prompt-text').textContent = promptText;
+    const isInsideTrack = closest.name.includes('Inside Track');
     if (mobilePlayBtn) {
-      mobilePlayBtn.style.display = _isTouchDevice ? 'block' : 'none';
+      mobilePlayBtn.style.display = (_isTouchDevice && !isInsideTrack) ? 'block' : 'none';
       mobilePlayBtn.textContent = closest.mobileText ? closest.mobileText() : 'PLAY';
     }
+    updateMobileHorsePanel(_isTouchDevice && isInsideTrack);
   } else {
     nearbyGame = null;
     prompt.style.display = 'none';
     if (mobilePlayBtn) mobilePlayBtn.style.display = 'none';
+    updateMobileHorsePanel(false);
   }
 }
 
@@ -795,6 +807,7 @@ function openGameModal(game) {
   document.getElementById('game-prompt').style.display = 'none';
   const mobilePlayBtn = document.getElementById('mobile-play-btn');
   if (mobilePlayBtn) mobilePlayBtn.style.display = 'none';
+  updateMobileHorsePanel(false);
   if (game.worldInteract) {
     game.openFn();
     return;
@@ -1016,6 +1029,53 @@ function setEntityMaterial(entity, material) {
 function selectInsideTrackHorse(index) {
   selectedInsideTrackHorse = Math.max(0, Math.min(insideTrackHorses.length - 1, index));
   updateInsideTrackSelectionVisual();
+  updateMobileHorsePanel(_isTouchDevice && nearbyGame && nearbyGame.name.includes('Inside Track') && !activeGame);
+}
+
+function renderMobileHorseCards() {
+  const grid = document.getElementById('mobile-horse-grid');
+  if (!grid) return;
+  grid.innerHTML = insideTrackHorses.map((h, i) => `
+    <button class="mobile-horse-card ${i === selectedInsideTrackHorse ? 'selected' : ''}" data-horse="${i}" type="button">
+      <div class="mobile-horse-no">#${i + 1}</div>
+      <div class="mobile-horse-name">${h.name}</div>
+      <div class="mobile-horse-odds">${h.odds}x</div>
+    </button>`).join('');
+  const raceBtn = document.getElementById('mobile-horse-race');
+  if (raceBtn) {
+    const h = insideTrackHorses[selectedInsideTrackHorse];
+    raceBtn.textContent = `RACE #${selectedInsideTrackHorse + 1} · ${h.odds}x PAYOUT`;
+  }
+}
+
+function updateMobileHorsePanel(show) {
+  const panel = document.getElementById('mobile-horse-panel');
+  if (!panel) return;
+  if (!show) {
+    panel.style.display = 'none';
+    panel.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  renderMobileHorseCards();
+  panel.style.display = 'block';
+  panel.setAttribute('aria-hidden', 'false');
+}
+
+const mobileHorsePanel = document.getElementById('mobile-horse-panel');
+if (mobileHorsePanel) {
+  mobileHorsePanel.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    const card = e.target.closest && e.target.closest('.mobile-horse-card');
+    if (card) {
+      e.preventDefault();
+      selectInsideTrackHorse(parseInt(card.dataset.horse, 10));
+      return;
+    }
+    if (e.target.id === 'mobile-horse-race') {
+      e.preventDefault();
+      if (nearbyGame && nearbyGame.name.includes('Inside Track') && !activeGame) openGameModal(nearbyGame);
+    }
+  });
 }
 
 function updateInsideTrackSelectionVisual(resultState = null, winner = null) {
