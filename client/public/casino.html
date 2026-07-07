@@ -1049,10 +1049,25 @@ function addInsideTrackHorseModels() {
   });
 }
 
+function replaceRouletteWithGLB() {
+  loadContainerAsset('roulette-table-web-glb', '/assets/models/roulette-table-web.glb', (rouletteAsset) => {
+    rou.enabled = false;
+    const model = instantiateContainer(
+      rouletteAsset,
+      'glb-roulette-table',
+      [0, -0.40, 1.5],
+      [0, 0, 0],
+      [0.9, 0.9, 0.9]
+    );
+    if (model) console.log('[Assets] Replaced primitive roulette with GLB roulette table');
+  });
+}
+
 addFullCasinoSceneGLB();
 replacePrimitiveSlotsWithGLB();
 replaceCardTablesWithGLB();
 addInsideTrackHorseModels();
+replaceRouletteWithGLB();
 
 // ===== PERFORMANCE OPTIMIZATION =====
 // Detect mobile / low-end devices and reduce quality
