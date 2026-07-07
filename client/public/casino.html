@@ -370,6 +370,26 @@ for (const slot of SLOT_LAYOUT) {
   makeSlotMachine(slot.x, slot.z, slot.rotY, slot.variant);
 }
 
+const slotCabinetReelSets = [];
+function makeSlotCabinetReels(slot, slotIndex) {
+  const reelRoot = new pc.Entity('slot-cabinet-reels-' + slotIndex);
+  reelRoot.setLocalPosition(slot.x, 0, slot.z);
+  reelRoot.setLocalEulerAngles(0, slot.rotY, 0);
+  const resultLight = makeBox('slot-cabinet-result-' + slotIndex, [0, 2.12, 0.74], [1.10, 0.10, 0.06], matGlowGold);
+  reelRoot.addChild(resultLight);
+  const reels = [];
+  for (let r = 0; r < 3; r++) {
+    const reel = makeBox('slot-cabinet-reel-' + slotIndex + '-' + r, [-0.34 + r * 0.34, 1.55, 0.76], [0.25, 0.54, 0.07], neonMats[(slot.variant + r) % neonMats.length]);
+    reelRoot.addChild(reel);
+    reels.push(reel);
+  }
+  app.root.addChild(reelRoot);
+  slotCabinetReelSets[slotIndex] = { root: reelRoot, reels, resultLight };
+}
+for (let i = 0; i < SLOT_LAYOUT.length; i++) {
+  makeSlotCabinetReels(SLOT_LAYOUT[i], i);
+}
+
 // ===== CARD TABLES =====
 const cardTablePrimitiveGroups = [];
 function makeCardTable(x, z, label) {
@@ -450,14 +470,31 @@ for (let i = 0; i < 5; i++) {
 track.addChild(makeBox('it-sign', [0, 8.5, 0.3], [6, 0.8, 0.2], makeMat(rgb(0x000000), rgb(0xff0000), 2.0, 0, 0.3)));
 
 const insideTrackWorldHorses = [];
+const insideTrackWorldHorseLabels = [];
+const insideTrackWorldLanePulses = [];
 const insideTrackHorseMats = [matGlowGold, matGlowBlue, matGlowRed, matGlowGreen, matGlowPink, matGlowWhite];
+const insideTrackDimLaneMat = makeMat(rgb(0x07130b), rgb(0x003311), 0.25, 0, 0.8);
+const insideTrackRaceLaneMat = makeMat(rgb(0x07331a), rgb(0x00ff7a), 0.9, 0, 0.7);
+const insideTrackFinishLine = makeBox('it-finish-line', [5.15, 4.55, 0.34], [0.08, 3.8, 0.10], matGlowWhite);
+const insideTrackStartLight = makeBox('it-start-light', [-5.15, 7.25, 0.36], [1.2, 0.18, 0.10], matGlowRed);
+track.addChild(insideTrackFinishLine);
+track.addChild(insideTrackStartLight);
 for (let i = 0; i < 6; i++) {
   const laneY = 3.0 + i * 0.62;
-  const lane = makeBox('it-world-lane-' + i, [0, laneY, 0.18], [10.6, 0.06, 0.06], makeMat(rgb(0x07130b), rgb(0x003311), 0.25, 0, 0.8));
-  const horse = makeBox('it-world-horse-' + i, [-5.0, laneY + 0.05, 0.32], [0.35, 0.22, 0.12], insideTrackHorseMats[i]);
+  const lane = makeBox('it-world-lane-' + i, [0, laneY, 0.18], [10.6, 0.06, 0.06], insideTrackDimLaneMat);
+  const horse = new pc.Entity('it-world-horse-' + i);
+  horse.setLocalPosition(-5.0, laneY + 0.05, 0.32);
+  horse.addChild(makeBox('horse-body-' + i, [0, 0, 0], [0.42, 0.18, 0.12], insideTrackHorseMats[i]));
+  horse.addChild(makeBox('horse-head-' + i, [0.24, 0.06, 0], [0.12, 0.12, 0.10], insideTrackHorseMats[i]));
+  horse.addChild(makeBox('horse-leg-a-' + i, [-0.12, -0.15, 0], [0.06, 0.17, 0.05], insideTrackHorseMats[i]));
+  horse.addChild(makeBox('horse-leg-b-' + i, [0.13, -0.15, 0], [0.06, 0.17, 0.05], insideTrackHorseMats[i]));
+  const label = makeBox('it-place-label-' + i, [-5.0, laneY + 0.05, 0.53], [0.32, 0.06, 0.05], insideTrackHorseMats[i]);
   track.addChild(lane);
   track.addChild(horse);
+  track.addChild(label);
   insideTrackWorldHorses.push(horse);
+  insideTrackWorldHorseLabels.push(label);
+  insideTrackWorldLanePulses.push(lane);
 }
 
 app.root.addChild(track);
@@ -775,6 +812,7 @@ for (let i = 0; i < slotPositions.length; i++) {
 
 let worldSlotPanel = null;
 let worldSlotReels = [];
+let selectedSlotCabinetSet = null;
 let worldSlotSpinning = false;
 
 function closeWorldSlotPanel() {
@@ -802,6 +840,7 @@ function openSlots(slotIndex) {
   if (worldSlotSpinning) return;
   closeWorldSlotPanel();
   const slot = SLOT_LAYOUT[slotIndex] || SLOT_LAYOUT[0];
+  selectedSlotCabinetSet = slotCabinetReelSets[slotIndex] || slotCabinetReelSets[0] || null;
   worldSlotPanel = new pc.Entity('world-slot-panel');
   worldSlotPanel.setLocalPosition(slot.x, 0, slot.z);
   worldSlotPanel.setLocalEulerAngles(0, slot.rotY, 0);
@@ -832,27 +871,44 @@ async function spinWorldSlots() {
   worldSlotSpinning = true;
   const { result, hash, nonce } = await ProvablyFair.rollSlots(3, slotSymbols.length);
   const resultLight = worldSlotPanel.findByName('slot-world-result');
+  const cabinetReels = selectedSlotCabinetSet ? selectedSlotCabinetSet.reels : [];
+  const cabinetResultLight = selectedSlotCabinetSet ? selectedSlotCabinetSet.resultLight : null;
   let tick = 0;
   const spinTimer = setInterval(() => {
     tick++;
+    const settlingReel = tick > 32 ? 2 : tick > 24 ? 1 : tick > 16 ? 0 : -1;
     for (let r = 0; r < 3; r++) {
-      setReelVisual(worldSlotReels[r], Math.floor(Math.random() * slotSymbols.length));
-      worldSlotReels[r].rotateLocal(0, 0, 35 + r * 8);
+      const symbol = r < settlingReel ? result[r] : Math.floor(Math.random() * slotSymbols.length);
+      if (worldSlotReels[r]) {
+        setReelVisual(worldSlotReels[r], symbol);
+        worldSlotReels[r].rotateLocal(0, 0, 42 + r * 10);
+      }
+      if (cabinetReels[r]) {
+        setReelVisual(cabinetReels[r], symbol);
+        cabinetReels[r].rotateLocal(0, 0, 55 + r * 13);
+      }
     }
-    if (tick >= 28) {
+    if (tick >= 44) {
       clearInterval(spinTimer);
-      for (let r = 0; r < 3; r++) setReelVisual(worldSlotReels[r], result[r]);
+      for (let r = 0; r < 3; r++) {
+        if (worldSlotReels[r]) setReelVisual(worldSlotReels[r], result[r]);
+        if (cabinetReels[r]) setReelVisual(cabinetReels[r], result[r]);
+      }
       const jackpot = result[0] === result[1] && result[1] === result[2];
       const pair = result[0] === result[1] || result[1] === result[2] || result[0] === result[2];
+      const finalMat = jackpot ? matGlowGold : pair ? matGlowGreen : matGlowRed;
       const mi = resultLight && resultLight.model && resultLight.model.meshInstances[0];
-      if (mi) mi.material = jackpot ? matGlowGold : pair ? matGlowGreen : matGlowRed;
+      const cmi = cabinetResultLight && cabinetResultLight.model && cabinetResultLight.model.meshInstances[0];
+      if (mi) mi.material = finalMat;
+      if (cmi) cmi.material = finalMat;
       console.log('[Slots 3D]', { result, nonce, hash: hash.slice(0, 16), jackpot, pair });
       setTimeout(() => {
         activeGame = null;
         closeWorldSlotPanel();
+        selectedSlotCabinetSet = null;
       }, 5200);
     }
-  }, 70);
+  }, 75);
 }
 
 // ===== GAME 2: LUCKY WHEEL =====
@@ -930,38 +986,77 @@ async function runInsideTrackWorldRace() {
   const winner = finishOrder[0];
   const sign = track.findByName('it-sign');
   const signMi = sign && sign.model && sign.model.meshInstances[0];
-  if (signMi) signMi.material = matGlowGold;
+  const startMi = insideTrackStartLight.model && insideTrackStartLight.model.meshInstances[0];
+  if (signMi) signMi.material = matGlowRed;
+  if (startMi) startMi.material = matGlowRed;
 
   for (let i = 0; i < insideTrackWorldHorses.length; i++) {
     insideTrackWorldHorses[i].setLocalPosition(-5.0, 3.05 + i * 0.62, 0.32);
-    const mi = insideTrackWorldHorses[i].model && insideTrackWorldHorses[i].model.meshInstances[0];
-    if (mi) mi.material = insideTrackHorseMats[i];
+    insideTrackWorldHorses[i].setLocalEulerAngles(0, 0, 0);
+    insideTrackWorldHorseLabels[i].setLocalPosition(-5.0, 3.05 + i * 0.62, 0.53);
+    const laneMi = insideTrackWorldLanePulses[i].model && insideTrackWorldLanePulses[i].model.meshInstances[0];
+    if (laneMi) laneMi.material = insideTrackRaceLaneMat;
+    insideTrackWorldHorses[i].children.forEach(part => {
+      const mi = part.model && part.model.meshInstances && part.model.meshInstances[0];
+      if (mi) mi.material = insideTrackHorseMats[i];
+    });
+    const labelMi = insideTrackWorldHorseLabels[i].model && insideTrackWorldHorseLabels[i].model.meshInstances[0];
+    if (labelMi) labelMi.material = insideTrackHorseMats[i];
   }
 
   let elapsed = 0;
-  const duration = 3.4;
+  const countdown = 1.35;
+  const duration = 8.6;
+  const leaderboard = new Map(finishOrder.map((horseIndex, place) => [horseIndex, place]));
   const raceUpdate = (dt) => {
     elapsed += dt;
-    const t = Math.min(1, elapsed / duration);
-    const eased = 1 - Math.pow(1 - t, 2.5);
-    finishOrder.forEach((horseIndex, place) => {
+    if (elapsed < countdown) {
+      const blinkGold = Math.floor(elapsed * 5) % 2 === 0;
+      if (startMi) startMi.material = blinkGold ? matGlowGold : matGlowRed;
+      return;
+    }
+    if (startMi) startMi.material = matGlowGreen;
+    if (signMi) signMi.material = Math.floor(elapsed * 4) % 2 === 0 ? matGlowGold : matGlowGreen;
+    const rt = Math.min(1, (elapsed - countdown) / duration);
+    const eased = rt < 0.75
+      ? 0.82 * (1 - Math.pow(1 - rt / 0.75, 2.2))
+      : 0.82 + 0.18 * (1 - Math.pow(1 - (rt - 0.75) / 0.25, 3));
+    for (let horseIndex = 0; horseIndex < insideTrackWorldHorses.length; horseIndex++) {
+      const place = leaderboard.get(horseIndex) || 0;
       const horse = insideTrackWorldHorses[horseIndex];
-      if (!horse) return;
+      const label = insideTrackWorldHorseLabels[horseIndex];
+      if (!horse || !label) continue;
       const laneY = 3.05 + horseIndex * 0.62;
-      const finishX = 5.0 - place * 0.32;
-      horse.setLocalPosition(-5.0 + (finishX + 5.0) * eased, laneY, 0.32);
-    });
-    if (t >= 1) {
+      const finishX = 5.0 - place * 0.36;
+      const drama = Math.sin((elapsed * (2.7 + horseIndex * 0.13)) + horseIndex) * (1 - rt) * 0.42;
+      const surge = Math.sin((elapsed * 5.5) + horseIndex * 1.7) * 0.08;
+      const x = Math.min(finishX, -5.0 + (finishX + 5.0) * eased + drama + surge);
+      const bob = Math.abs(Math.sin(elapsed * 10 + horseIndex)) * 0.055;
+      horse.setLocalPosition(x, laneY + bob, 0.32);
+      horse.setLocalEulerAngles(0, 0, Math.sin(elapsed * 12 + horseIndex) * 4);
+      label.setLocalPosition(x, laneY + 0.22 + bob, 0.53);
+    }
+    if (rt >= 1) {
       app.off('update', raceUpdate);
       const winnerHorse = insideTrackWorldHorses[winner];
-      const mi = winnerHorse && winnerHorse.model && winnerHorse.model.meshInstances[0];
-      if (mi) mi.material = matGlowGold;
+      if (winnerHorse) {
+        winnerHorse.children.forEach(part => {
+          const mi = part.model && part.model.meshInstances && part.model.meshInstances[0];
+          if (mi) mi.material = matGlowGold;
+        });
+      }
+      const winnerLabelMi = insideTrackWorldHorseLabels[winner] && insideTrackWorldHorseLabels[winner].model && insideTrackWorldHorseLabels[winner].model.meshInstances[0];
+      if (winnerLabelMi) winnerLabelMi.material = matGlowGold;
       if (signMi) signMi.material = insideTrackHorseMats[winner] || matGlowGold;
-      console.log('[Inside Track 3D]', { winner: insideTrackHorses[winner].name, finishOrder, nonce, hash: hash.slice(0, 16) });
+      for (let i = 0; i < insideTrackWorldLanePulses.length; i++) {
+        const laneMi = insideTrackWorldLanePulses[i].model && insideTrackWorldLanePulses[i].model.meshInstances[0];
+        if (laneMi) laneMi.material = i === winner ? matGlowGold : insideTrackDimLaneMat;
+      }
+      console.log('[Inside Track 3D]', { winner: insideTrackHorses[winner].name, finishOrder, durationSeconds: duration + countdown, nonce, hash: hash.slice(0, 16) });
       setTimeout(() => {
         activeGame = null;
         insideTrackWorldRunning = false;
-      }, 2600);
+      }, 4200);
     }
   };
   app.on('update', raceUpdate);
