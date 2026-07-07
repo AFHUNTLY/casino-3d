@@ -910,6 +910,25 @@ function instantiateContainer(asset, name, pos, rot, scale) {
   return e;
 }
 
+function addFullCasinoSceneGLB() {
+  // Full Sketchfab casino scene, centered and grounded from glTF bbox inspection.
+  // Loaded first as a static environment layer. We keep existing interaction
+  // points until we align them to the imported scene one by one.
+  loadContainerAsset('casino-scene-katydid-web-glb', '/assets/models/casino-scene-katydid-web.glb', (sceneAsset) => {
+    const scene = instantiateContainer(
+      sceneAsset,
+      'glb-full-casino-scene-katydid',
+      [28.8226636, 10.975962, 0.011606],
+      [0, 0, 0],
+      [0.04, 0.04, 0.04]
+    );
+    if (scene) {
+      window.__mainCasinoSceneLoaded = true;
+      console.log('[Assets] Added full casino scene GLB as static environment layer');
+    }
+  });
+}
+
 function replacePrimitiveSlotsWithGLB() {
   loadContainerAsset('slot-machine-glb', '/assets/models/slot-machine.glb', (slotAsset) => {
     loadContainerAsset('slot-jackpot-glb', '/assets/models/slot-jackpot.glb', (jackpotAsset) => {
@@ -969,6 +988,7 @@ function addInsideTrackHorseModels() {
   });
 }
 
+addFullCasinoSceneGLB();
 replacePrimitiveSlotsWithGLB();
 replaceCardTablesWithGLB();
 addInsideTrackHorseModels();
