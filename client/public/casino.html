@@ -796,6 +796,7 @@ document.addEventListener('keydown', (e) => {
     openGameModal(nearbyGame);
   }
   if (e.code === 'Escape' && activeGame) {
+    if (insideTrackWorldRunning) return;
     closeGameModal();
   }
 });
@@ -1099,14 +1100,108 @@ function updateInsideTrackSelectionVisual(resultState = null, winner = null) {
 updateInsideTrackSelectionVisual();
 
 let insideTrackWorldRunning = false;
+let insideTrackCinematicState = null;
+let casinoAudioCtx = null;
+let insideTrackRaceNoiseStop = null;
+
 function openInsideTrack() {
   runInsideTrackWorldRace(selectedInsideTrackHorse);
+}
+
+function ensureCasinoAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!casinoAudioCtx) casinoAudioCtx = new AC();
+  if (casinoAudioCtx.state === 'suspended') casinoAudioCtx.resume().catch(() => {});
+  return casinoAudioCtx;
+}
+
+function playCasinoTone(freq, duration = 0.12, type = 'sine', volume = 0.04, delay = 0) {
+  const ctx = ensureCasinoAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
+  gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + delay + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime + delay);
+  osc.stop(ctx.currentTime + delay + duration + 0.03);
+}
+
+function startInsideTrackRaceAudio(countdown, duration) {
+  ensureCasinoAudio();
+  playCasinoTone(420, 0.10, 'square', 0.035, 0.10);
+  playCasinoTone(420, 0.10, 'square', 0.035, 0.55);
+  playCasinoTone(420, 0.10, 'square', 0.035, 1.00);
+  playCasinoTone(880, 0.22, 'triangle', 0.05, countdown);
+  const hoofTimer = setInterval(() => {
+    if (!insideTrackWorldRunning) return;
+    playCasinoTone(95 + Math.random() * 35, 0.045, 'sawtooth', 0.018);
+    playCasinoTone(130 + Math.random() * 45, 0.035, 'triangle', 0.012, 0.055);
+  }, 150);
+  const crowdTimer = setInterval(() => {
+    if (!insideTrackWorldRunning) return;
+    playCasinoTone(210 + Math.random() * 140, 0.16, 'sine', 0.010);
+  }, 700);
+  return () => { clearInterval(hoofTimer); clearInterval(crowdTimer); };
+}
+
+function playInsideTrackResultAudio(won) {
+  if (won) {
+    playCasinoTone(523, 0.12, 'triangle', 0.045, 0);
+    playCasinoTone(659, 0.12, 'triangle', 0.045, 0.13);
+    playCasinoTone(784, 0.24, 'triangle', 0.055, 0.26);
+  } else {
+    playCasinoTone(220, 0.18, 'sawtooth', 0.035, 0);
+    playCasinoTone(160, 0.22, 'sawtooth', 0.03, 0.17);
+  }
+}
+
+function beginInsideTrackCinematic() {
+  insideTrackCinematicState = {
+    pos: camera.getLocalPosition().clone(),
+    yaw,
+    pitch,
+    fov: camera.camera.fov
+  };
+  if (document.pointerLockElement) document.exitPointerLock();
+  document.getElementById('crosshair').style.display = 'none';
+}
+
+function updateInsideTrackCinematic(elapsed, countdown, duration) {
+  if (!insideTrackCinematicState) return;
+  const raceT = Math.max(0, Math.min(1, (elapsed - countdown) / duration));
+  const introT = Math.min(1, elapsed / countdown);
+  const pulse = Math.sin(elapsed * 1.6) * 0.16;
+  const camX = Math.sin(raceT * Math.PI * 2) * 0.34;
+  const camY = 2.72 + introT * 0.42 + pulse * 0.22;
+  const camZ = -7.9 - introT * 1.25 - raceT * 0.45;
+  camera.setLocalPosition(camX, camY, camZ);
+  camera.camera.fov = 60 - introT * 7 + Math.sin(raceT * Math.PI) * 2;
+  const yawOffset = Math.sin(elapsed * 0.75) * 1.2;
+  const pitchDeg = -4.5 + Math.sin(elapsed * 1.1) * 0.6;
+  camera.setLocalEulerAngles(pitchDeg, 180 + yawOffset, 0);
+}
+
+function endInsideTrackCinematic() {
+  if (!insideTrackCinematicState) return;
+  camera.setLocalPosition(insideTrackCinematicState.pos);
+  yaw = insideTrackCinematicState.yaw;
+  pitch = insideTrackCinematicState.pitch;
+  camera.camera.fov = insideTrackCinematicState.fov;
+  camera.setLocalEulerAngles(pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0);
+  insideTrackCinematicState = null;
 }
 
 async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackHorse) {
   if (insideTrackWorldRunning) return;
   insideTrackWorldRunning = true;
   const { finishOrder, hash, nonce } = await ProvablyFair.rollHorseRace(insideTrackHorses.length);
+  beginInsideTrackCinematic();
   const winner = finishOrder[0];
   const sign = track.findByName('it-sign');
   const signMi = sign && sign.model && sign.model.meshInstances[0];
@@ -1132,9 +1227,12 @@ async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackH
   let elapsed = 0;
   const countdown = 1.35;
   const duration = 8.6;
+  if (insideTrackRaceNoiseStop) insideTrackRaceNoiseStop();
+  insideTrackRaceNoiseStop = startInsideTrackRaceAudio(countdown, duration);
   const leaderboard = new Map(finishOrder.map((horseIndex, place) => [horseIndex, place]));
   const raceUpdate = (dt) => {
     elapsed += dt;
+    updateInsideTrackCinematic(elapsed, countdown, duration);
     if (elapsed < countdown) {
       const blinkGold = Math.floor(elapsed * 5) % 2 === 0;
       if (startMi) startMi.material = blinkGold ? matGlowGold : matGlowRed;
@@ -1174,6 +1272,8 @@ async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackH
       if (winnerLabelMi) winnerLabelMi.material = matGlowGold;
       const pickedWon = selectedHorseIndex === winner;
       const payout = pickedWon ? Math.floor(insideTrackBetAmount * insideTrackHorses[winner].odds) : 0;
+      if (insideTrackRaceNoiseStop) { insideTrackRaceNoiseStop(); insideTrackRaceNoiseStop = null; }
+      playInsideTrackResultAudio(pickedWon);
       if (signMi) signMi.material = pickedWon ? matGlowGreen : matGlowRed;
       for (let i = 0; i < insideTrackWorldLanePulses.length; i++) {
         const laneMi = insideTrackWorldLanePulses[i].model && insideTrackWorldLanePulses[i].model.meshInstances[0];
@@ -1182,6 +1282,8 @@ async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackH
       updateInsideTrackSelectionVisual(pickedWon ? 'win' : 'lose', winner);
       console.log('[Inside Track 3D]', { selected: insideTrackHorses[selectedHorseIndex].name, winner: insideTrackHorses[winner].name, pickedWon, bet: insideTrackBetAmount, payout, finishOrder, durationSeconds: duration + countdown, nonce, hash: hash.slice(0, 16) });
       setTimeout(() => {
+        if (insideTrackRaceNoiseStop) { insideTrackRaceNoiseStop(); insideTrackRaceNoiseStop = null; }
+        endInsideTrackCinematic();
         activeGame = null;
         insideTrackWorldRunning = false;
         updateInsideTrackSelectionVisual();
@@ -1739,6 +1841,7 @@ if (isTouch) {
   const lookArea = document.getElementById('look-area');
   lookArea.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    if (activeGame) return;
     const t = e.touches[0];
     touchLook.active = true;
     touchLook.lastX = t.clientX;
@@ -1747,7 +1850,7 @@ if (isTouch) {
 
   lookArea.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    if (!touchLook.active) return;
+    if (activeGame || !touchLook.active) return;
     const t = e.touches[0];
     yaw -= (t.clientX - touchLook.lastX) * 0.004;
     pitch -= (t.clientY - touchLook.lastY) * 0.004;
