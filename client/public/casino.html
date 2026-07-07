@@ -449,6 +449,17 @@ for (let i = 0; i < 5; i++) {
 // Sign above
 track.addChild(makeBox('it-sign', [0, 8.5, 0.3], [6, 0.8, 0.2], makeMat(rgb(0x000000), rgb(0xff0000), 2.0, 0, 0.3)));
 
+const insideTrackWorldHorses = [];
+const insideTrackHorseMats = [matGlowGold, matGlowBlue, matGlowRed, matGlowGreen, matGlowPink, matGlowWhite];
+for (let i = 0; i < 6; i++) {
+  const laneY = 3.0 + i * 0.62;
+  const lane = makeBox('it-world-lane-' + i, [0, laneY, 0.18], [10.6, 0.06, 0.06], makeMat(rgb(0x07130b), rgb(0x003311), 0.25, 0, 0.8));
+  const horse = makeBox('it-world-horse-' + i, [-5.0, laneY + 0.05, 0.32], [0.35, 0.22, 0.12], insideTrackHorseMats[i]);
+  track.addChild(lane);
+  track.addChild(horse);
+  insideTrackWorldHorses.push(horse);
+}
+
 app.root.addChild(track);
 
 // ===== BAR (back wall) =====
@@ -905,73 +916,55 @@ const insideTrackHorses = [
   { name: 'Long Shot', emoji: '🐎', odds: 12.0, color: '#ffffff' },
 ];
 
-registerGame('🏇 Inside Track', [0, 0, -15.8], 5.2, openInsideTrack);
+registerGame('🏇 Inside Track', [0, 0, -15.8], 5.2, openInsideTrack, { worldInteract: true });
 
+let insideTrackWorldRunning = false;
 function openInsideTrack() {
-  setModalSub('GTA-style virtual horse racing • Pick a horse • Provably Fair');
-  setModalContent(`
-    <div style="min-width:min(560px,86vw)">
-      <div class="bet-row">
-        <label>Bet Amount (ETH)</label>
-        <input type="number" id="horse-bet" value="0.001" min="0.0001" step="0.0001" style="width:130px"/>
-      </div>
-      <div class="bet-row">
-        <label>Pick Horse</label>
-        <select id="horse-pick" style="width:230px">
-          ${insideTrackHorses.map((h, i) => `<option value="${i}">${i + 1}. ${h.name} — ${h.odds.toFixed(1)}x</option>`).join('')}
-        </select>
-      </div>
-      <div id="race-track" style="margin:16px 0;padding:12px;background:linear-gradient(180deg,rgba(0,60,20,.45),rgba(0,0,0,.55));border:1px solid rgba(255,215,0,.25);border-radius:12px;overflow:hidden">
-        ${insideTrackHorses.map((h, i) => `
-          <div style="position:relative;height:34px;margin:6px 0;background:rgba(255,255,255,.06);border-radius:999px;border-left:4px solid ${h.color}">
-            <span style="position:absolute;left:8px;top:7px;font-size:12px;color:#ddd;z-index:2">${i + 1}</span>
-            <span id="horse-runner-${i}" style="position:absolute;left:30px;top:3px;font-size:24px;transition:left 2.8s cubic-bezier(.15,.75,.2,1);filter:drop-shadow(0 2px 3px #000)">${h.emoji}</span>
-            <span style="position:absolute;right:10px;top:8px;font-size:12px;color:${h.color};font-weight:700">${h.odds.toFixed(1)}x</span>
-          </div>
-        `).join('')}
-      </div>
-      <div id="horse-result"></div>
-      <button class="btn-primary" id="horse-race-btn">🏇 START RACE</button>
-      <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
-    </div>
-  `);
-  document.getElementById('horse-race-btn').addEventListener('click', runInsideTrackRace);
+  runInsideTrackWorldRace();
 }
 
-let horseRaceRunning = false;
-async function runInsideTrackRace() {
-  if (horseRaceRunning) return;
-  horseRaceRunning = true;
-  const btn = document.getElementById('horse-race-btn');
-  const resultDiv = document.getElementById('horse-result');
-  const bet = parseFloat(document.getElementById('horse-bet').value || '0');
-  const pick = parseInt(document.getElementById('horse-pick').value, 10);
-  btn.disabled = true;
-  btn.textContent = '🏇 RACING...';
-  resultDiv.innerHTML = '<div class="result-box result-pending">Horses are at the gate...</div>';
-
+async function runInsideTrackWorldRace() {
+  if (insideTrackWorldRunning) return;
+  insideTrackWorldRunning = true;
   const { finishOrder, hash, nonce } = await ProvablyFair.rollHorseRace(insideTrackHorses.length);
   const winner = finishOrder[0];
-  const trackWidth = Math.max(220, (document.getElementById('race-track')?.clientWidth || 420) - 70);
+  const sign = track.findByName('it-sign');
+  const signMi = sign && sign.model && sign.model.meshInstances[0];
+  if (signMi) signMi.material = matGlowGold;
 
-  finishOrder.forEach((horseIndex, place) => {
-    const runner = document.getElementById('horse-runner-' + horseIndex);
-    if (!runner) return;
-    runner.style.transitionDuration = (2.0 + place * 0.22).toFixed(2) + 's';
-    runner.style.left = (trackWidth - place * 12) + 'px';
-  });
+  for (let i = 0; i < insideTrackWorldHorses.length; i++) {
+    insideTrackWorldHorses[i].setLocalPosition(-5.0, 3.05 + i * 0.62, 0.32);
+    const mi = insideTrackWorldHorses[i].model && insideTrackWorldHorses[i].model.meshInstances[0];
+    if (mi) mi.material = insideTrackHorseMats[i];
+  }
 
-  setTimeout(() => {
-    const pickedWinner = pick === winner;
-    const horse = insideTrackHorses[winner];
-    const payout = pickedWinner ? bet * insideTrackHorses[pick].odds : 0;
-    resultDiv.innerHTML = pickedWinner
-      ? `<div class="result-box result-win">🏆 ${horse.name} wins!<br>You won ${payout.toFixed(4)} ETH<br><small>Nonce ${nonce} • ${hash.slice(0, 16)}...</small></div>`
-      : `<div class="result-box result-lose">🏁 ${horse.name} wins.<br>Your pick: ${insideTrackHorses[pick].name}<br><small>Nonce ${nonce} • ${hash.slice(0, 16)}...</small></div>`;
-    btn.disabled = false;
-    btn.textContent = '🏇 RACE AGAIN';
-    horseRaceRunning = false;
-  }, 3300);
+  let elapsed = 0;
+  const duration = 3.4;
+  const raceUpdate = (dt) => {
+    elapsed += dt;
+    const t = Math.min(1, elapsed / duration);
+    const eased = 1 - Math.pow(1 - t, 2.5);
+    finishOrder.forEach((horseIndex, place) => {
+      const horse = insideTrackWorldHorses[horseIndex];
+      if (!horse) return;
+      const laneY = 3.05 + horseIndex * 0.62;
+      const finishX = 5.0 - place * 0.32;
+      horse.setLocalPosition(-5.0 + (finishX + 5.0) * eased, laneY, 0.32);
+    });
+    if (t >= 1) {
+      app.off('update', raceUpdate);
+      const winnerHorse = insideTrackWorldHorses[winner];
+      const mi = winnerHorse && winnerHorse.model && winnerHorse.model.meshInstances[0];
+      if (mi) mi.material = matGlowGold;
+      if (signMi) signMi.material = insideTrackHorseMats[winner] || matGlowGold;
+      console.log('[Inside Track 3D]', { winner: insideTrackHorses[winner].name, finishOrder, nonce, hash: hash.slice(0, 16) });
+      setTimeout(() => {
+        activeGame = null;
+        insideTrackWorldRunning = false;
+      }, 2600);
+    }
+  };
+  app.on('update', raceUpdate);
 }
 
 // ===== GAME 4: ROULETTE =====
