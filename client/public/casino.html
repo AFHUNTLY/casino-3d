@@ -259,6 +259,26 @@ const slotCabinets = [
 // ===== ROOM DIMENSIONS =====
 const RW = 60, RH = 14, RD = 60;
 
+// ===== IMPORTED CASINO SCENE ALIGNMENT =====
+// The Sketchfab casino scene, after scale/position fix, occupies roughly:
+// X -9.7..9.7, Z -20.3..20.3, Y 0..8.1. Keep all playable items inside this.
+const CASINO_BOUNDS = { minX: -8.9, maxX: 8.9, minZ: -19.5, maxZ: 19.5 };
+const PLAYER_SPAWN = { x: 0, y: 1.7, z: 18.4, yaw: Math.PI };
+const SLOT_LAYOUT = [];
+for (let i = 0; i < 6; i++) {
+  const z = -14 + i * 4.6;
+  SLOT_LAYOUT.push({ x: -7.2, z, rotY: 90, variant: i });
+  SLOT_LAYOUT.push({ x: -5.0, z, rotY: -90, variant: i + 6 });
+  SLOT_LAYOUT.push({ x: 5.0, z, rotY: 90, variant: i + 12 });
+  SLOT_LAYOUT.push({ x: 7.2, z, rotY: -90, variant: i + 18 });
+}
+const CARD_TABLE_LAYOUT = [
+  { x: -4.3, z: 6.5, label: 'BJ' },
+  { x: 4.3, z: 6.5, label: 'BJ' },
+  { x: -4.3, z: 12.5, label: 'PKR' },
+  { x: 4.3, z: 12.5, label: 'PKR' },
+];
+
 // ===== FLOOR (checkered marble) =====
 const tileSize = 5;
 for (let x = -RW/2; x < RW/2; x += tileSize) {
@@ -342,17 +362,9 @@ function makeSlotMachine(x, z, rotY, variant) {
   return group;
 }
 
-// Left rows of slots
-for (let row = 0; row < 2; row++) {
-  for (let i = 0; i < 6; i++) {
-    makeSlotMachine(-20 + row * 3.5, -18 + i * 4.5, row === 0 ? 90 : -90, i + row);
-  }
-}
-// Right rows
-for (let row = 0; row < 2; row++) {
-  for (let i = 0; i < 6; i++) {
-    makeSlotMachine(17 + row * 3.5, -18 + i * 4.5, row === 0 ? -90 : 90, i + row + 2);
-  }
+// Slot banks aligned inside the imported Sketchfab casino shell.
+for (const slot of SLOT_LAYOUT) {
+  makeSlotMachine(slot.x, slot.z, slot.rotY, slot.variant);
 }
 
 // ===== CARD TABLES =====
@@ -384,14 +396,13 @@ function makeCardTable(x, z, label) {
   return group;
 }
 
-makeCardTable(-10, 8, 'BJ');
-makeCardTable(10, 8, 'BJ');
-makeCardTable(-10, 18, 'PKR');
-makeCardTable(10, 18, 'PKR');
+for (const table of CARD_TABLE_LAYOUT) {
+  makeCardTable(table.x, table.z, table.label);
+}
 
 // ===== ROULETTE =====
 const rou = new pc.Entity('roulette');
-rou.setLocalPosition(0, 0, 20);
+rou.setLocalPosition(0, 0, 1.5);
 rou.addChild(makeCylinder('r-base', [0, 0.5, 0], [1.5, 1.0, 1.5], matDarkWood));
 rou.addChild(makeCylinder('r-wheel', [0, 1.1, 0], [1.2, 0.2, 1.2], makeMat(rgb(0x1a0a04), null, 0, 0.7, 0.3)));
 rou.addChild(makeTorus('r-gold', [0, 1.2, 0], [1.25, 1, 1.25], matGold, [90, 0, 0]));
@@ -402,7 +413,7 @@ app.root.addChild(rou);
 
 // ===== INSIDE TRACK (Horse Racing) =====
 const track = new pc.Entity('inside-track');
-track.setLocalPosition(0, 0, -22);
+track.setLocalPosition(0, 0, -15.8);
 
 // Big screen showing odds
 const screenBg = makeBox('it-screen-bg', [0, 5, -0.1], [12, 5, 0.2], makeMat(rgb(0x000000), null, 0, 0, 0.5));
@@ -482,7 +493,7 @@ makeBox('inside-track-zone-strip', [0, 0.12, -10.8], [20, 0.08, 0.18], matGlowGr
 
 // ===== LUCKY WHEEL (GTA V Podium Vehicle style) =====
 const luckyWheel = new pc.Entity('lucky-wheel');
-luckyWheel.setLocalPosition(0, 0, 15);
+luckyWheel.setLocalPosition(0, 0, 17.0);
 // Base platform
 luckyWheel.addChild(makeCylinder('lw-base', [0, 0.15, 0], [2, 0.3, 2], matDarkWood));
 luckyWheel.addChild(makeCylinder('lw-pole', [0, 1.0, 0], [0.3, 1.4, 0.3], matGold));
@@ -532,7 +543,7 @@ camera.addComponent('camera', {
   farClip: 300,
   clearColor: new pc.Color(0.04, 0.02, 0.06),
 });
-camera.setLocalPosition(0, 1.7, RD/2 - 3);
+camera.setLocalPosition(PLAYER_SPAWN.x, PLAYER_SPAWN.y, PLAYER_SPAWN.z);
 app.root.addChild(camera);
 
 // Hemisphere-like fill light at camera
@@ -561,7 +572,7 @@ app.root.addChild(mainLight);
 
 // ===== FIRST PERSON CONTROLLER =====
 let isLocked = false;
-let yaw = Math.PI, pitch = 0;
+let yaw = PLAYER_SPAWN.yaw, pitch = 0;
 const keys = {};
 
 document.addEventListener('keydown', (e) => { keys[e.code] = true; });
@@ -591,8 +602,8 @@ canvas.addEventListener('click', requestLock);
 
 // Movement
 const speed = 8;
-const boundX = RW/2 - 2;
-const boundZ = RD/2 - 2;
+const boundX = CASINO_BOUNDS.maxX;
+const boundZ = CASINO_BOUNDS.maxZ;
 let time = 0;
 
 app.on('update', (dt) => {
@@ -618,8 +629,8 @@ app.on('update', (dt) => {
   }
 
   const pos = camera.getLocalPosition();
-  pos.x = Math.max(-boundX, Math.min(boundX, pos.x));
-  pos.z = Math.max(-boundZ, Math.min(boundZ, pos.z));
+  pos.x = Math.max(CASINO_BOUNDS.minX, Math.min(boundX, pos.x));
+  pos.z = Math.max(CASINO_BOUNDS.minZ, Math.min(boundZ, pos.z));
   pos.y = 1.7;
   camera.setLocalPosition(pos);
 
@@ -704,19 +715,7 @@ function setModalSub(text) {
 
 // ===== GAME 1: SLOT MACHINE =====
 // Register all slot machines as interactive
-const slotPositions = [];
-// Left rows
-for (let row = 0; row < 2; row++) {
-  for (let i = 0; i < 6; i++) {
-    slotPositions.push([-20 + row * 3.5, -18 + i * 4.5]);
-  }
-}
-// Right rows
-for (let row = 0; row < 2; row++) {
-  for (let i = 0; i < 6; i++) {
-    slotPositions.push([17 + row * 3.5, -18 + i * 4.5]);
-  }
-}
+const slotPositions = SLOT_LAYOUT.map(slot => [slot.x, slot.z]);
 
 const slotSymbols = ['7️⃣', '💎', '🔔', '🍒', '🍋', '🍊', '⭐', '🍀'];
 const slotPayouts = { '7️⃣': 50, '💎': 20, '🔔': 10, '🍒': 5, '🍋': 3, '🍊': 3, '⭐': 8, '🍀': 4 };
