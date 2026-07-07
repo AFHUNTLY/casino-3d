@@ -379,25 +379,6 @@ for (const slot of SLOT_LAYOUT) {
   makeSlotMachine(slot.x, slot.z, slot.rotY, slot.variant);
 }
 
-const slotCabinetReelSets = [];
-function makeSlotCabinetReels(slot, slotIndex) {
-  const reelRoot = new pc.Entity('slot-cabinet-reels-' + slotIndex);
-  reelRoot.setLocalPosition(slot.x, 0, slot.z);
-  reelRoot.setLocalEulerAngles(0, slot.rotY, 0);
-  const resultLight = makeBox('slot-cabinet-result-' + slotIndex, [0, 2.12, 0.74], [1.10, 0.10, 0.06], matGlowGold);
-  reelRoot.addChild(resultLight);
-  const reels = [];
-  for (let r = 0; r < 3; r++) {
-    const reel = makeBox('slot-cabinet-reel-' + slotIndex + '-' + r, [-0.34 + r * 0.34, 1.55, 0.76], [0.25, 0.54, 0.07], neonMats[(slot.variant + r) % neonMats.length]);
-    reelRoot.addChild(reel);
-    reels.push(reel);
-  }
-  app.root.addChild(reelRoot);
-  slotCabinetReelSets[slotIndex] = { root: reelRoot, reels, resultLight };
-}
-for (let i = 0; i < SLOT_LAYOUT.length; i++) {
-  makeSlotCabinetReels(SLOT_LAYOUT[i], i);
-}
 
 // ===== CARD TABLES =====
 const cardTablePrimitiveGroups = [];
@@ -834,7 +815,9 @@ function setModalSub(text) {
 }
 
 // ===== GAME 1: SLOT MACHINE =====
-// Register all slot machines as interactive
+// Register all slot machines as interactive. Slots intentionally use the web-style
+// modal UI because the imported jackpot GLBs are static meshes and their reels do
+// not animate correctly as separate world parts.
 const slotPositions = SLOT_LAYOUT.map(slot => [slot.x, slot.z]);
 
 const slotSymbols = ['7️⃣', '💎', '🔔', '🍒', '🍋', '🍊', '⭐', '🍀'];
@@ -842,108 +825,98 @@ const slotPayouts = { '7️⃣': 50, '💎': 20, '🔔': 10, '🍒': 5, '🍋': 
 
 for (let i = 0; i < slotPositions.length; i++) {
   const [sx, sz] = slotPositions[i];
-  registerGame('🎰 Slots #' + (i + 1), [sx, 0, sz], 3.5, () => openSlots(i), { worldInteract: true });
+  registerGame('🎰 Slots #' + (i + 1), [sx, 0, sz], 3.5, () => openSlots(i));
 }
 
-let worldSlotPanel = null;
-let worldSlotReels = [];
-let selectedSlotCabinetSet = null;
-let worldSlotSpinning = false;
+let slotModalSpinning = false;
+let slotModalTimer = null;
 
 function closeWorldSlotPanel() {
-  if (worldSlotPanel) {
-    worldSlotPanel.destroy();
-    worldSlotPanel = null;
-    worldSlotReels = [];
+  // Kept for closeGameModal compatibility. Slots no longer create world panels.
+  if (slotModalTimer) {
+    clearInterval(slotModalTimer);
+    slotModalTimer = null;
   }
-  worldSlotSpinning = false;
-}
-
-function makeSlotReelMat(index, glow = 1.8) {
-  const colors = [0xffd700, 0x00e5ff, 0xff2d55, 0x7cff4d, 0xff8c00, 0xffffff, 0xb46bff, 0x00ffaa];
-  const hex = colors[index % colors.length];
-  return makeMat(rgb(hex), rgb(hex), glow, 0.2, 0.25);
-}
-
-function setReelVisual(entity, symbolIndex) {
-  const mi = entity.model && entity.model.meshInstances && entity.model.meshInstances[0];
-  if (mi) mi.material = makeSlotReelMat(symbolIndex);
-  entity.setLocalEulerAngles(0, 0, symbolIndex * 45);
+  slotModalSpinning = false;
 }
 
 function openSlots(slotIndex) {
-  if (worldSlotSpinning) return;
-  closeWorldSlotPanel();
-  const slot = SLOT_LAYOUT[slotIndex] || SLOT_LAYOUT[0];
-  selectedSlotCabinetSet = slotCabinetReelSets[slotIndex] || slotCabinetReelSets[0] || null;
-  worldSlotPanel = new pc.Entity('world-slot-panel');
-  worldSlotPanel.setLocalPosition(slot.x, 0, slot.z);
-  worldSlotPanel.setLocalEulerAngles(0, slot.rotY, 0);
-
-  const back = makeBox('slot-world-back', [0, 2.1, 0.72], [2.35, 1.65, 0.12], makeMat(rgb(0x050508), rgb(0x442200), 0.5, 0.2, 0.3));
-  const frame = makeBox('slot-world-frame', [0, 2.1, 0.80], [2.55, 1.85, 0.08], matGold);
-  const resultLight = makeBox('slot-world-result', [0, 3.15, 0.88], [1.9, 0.18, 0.08], matGlowGold);
-  worldSlotPanel.addChild(frame);
-  worldSlotPanel.addChild(back);
-  worldSlotPanel.addChild(resultLight);
-
-  worldSlotReels = [];
-  for (let r = 0; r < 3; r++) {
-    const reel = makeBox('slot-world-reel-' + r, [-0.62 + r * 0.62, 2.1, 0.9], [0.46, 0.78, 0.10], makeSlotReelMat(r));
-    worldSlotPanel.addChild(reel);
-    worldSlotReels.push(reel);
-  }
-  const lever = makeCylinder('slot-world-lever', [1.48, 2.1, 0.85], [0.08, 0.65, 0.08], matGold);
-  lever.setLocalEulerAngles(0, 0, 35);
-  worldSlotPanel.addChild(lever);
-
-  app.root.addChild(worldSlotPanel);
-  spinWorldSlots();
+  setModalSub('Provably fair HMAC-SHA256 spin · jackpot = three matching symbols');
+  setModalContent(`
+    <style>
+      .slot-web-wrap{display:flex;flex-direction:column;gap:16px;min-width:min(420px,86vw)}
+      .slot-web-machine{position:relative;padding:18px;border-radius:18px;background:linear-gradient(145deg,#1b0c0f,#070509);border:1px solid rgba(255,215,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 40px rgba(255,215,0,.08)}
+      .slot-web-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:#ffd700;font-weight:900;letter-spacing:.8px}.slot-web-badge{font-size:12px;color:#ffef9a;background:rgba(255,215,0,.09);border:1px solid rgba(255,215,0,.22);padding:4px 8px;border-radius:999px}
+      .slot-web-reels{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;border-radius:14px;background:linear-gradient(180deg,#050505,#111);border:1px solid rgba(255,255,255,.08)}
+      .slot-web-reel{height:100px;display:grid;place-items:center;font-size:46px;border-radius:12px;background:radial-gradient(circle at 50% 0%,rgba(255,215,0,.18),transparent 44%),linear-gradient(180deg,#2a2a32,#09090c);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 10px 20px rgba(255,255,255,.05),inset 0 -14px 24px rgba(0,0,0,.45);transition:transform .08s}
+      .slot-web-reel.spinning{transform:translateY(-3px) scale(1.04);filter:blur(.3px) brightness(1.18)}
+      .slot-web-info{display:flex;justify-content:space-between;gap:10px;color:#aaa;font-size:13px}.slot-web-info b{color:#ffd700}.slot-web-actions{display:grid;grid-template-columns:1fr .55fr;gap:10px}.slot-web-result{min-height:54px;display:grid;place-items:center;border-radius:12px;font-weight:900;text-align:center}
+      @media (pointer:coarse) and (max-width:600px){.slot-web-wrap{min-width:0;width:100%}.slot-web-reel{height:82px;font-size:38px}.slot-web-actions{grid-template-columns:1fr}.slot-web-machine{padding:14px}}
+    </style>
+    <div class="slot-web-wrap">
+      <div class="slot-web-machine">
+        <div class="slot-web-top"><span>🎰 JACKPOT MACHINE #${slotIndex + 1}</span><span class="slot-web-badge">BET 100</span></div>
+        <div class="slot-web-reels">
+          <div class="slot-web-reel" id="slot-web-reel-0">7️⃣</div>
+          <div class="slot-web-reel" id="slot-web-reel-1">💎</div>
+          <div class="slot-web-reel" id="slot-web-reel-2">🔔</div>
+        </div>
+      </div>
+      <div class="slot-web-info"><span>Pair pays small</span><span>Jackpot pays <b>symbol multiplier</b></span></div>
+      <div id="slot-web-result" class="slot-web-result result-pending">Ready to spin</div>
+      <div class="slot-web-actions">
+        <button class="btn-primary" id="slot-web-spin-btn">SPIN REELS</button>
+        <button class="btn-secondary" id="slot-web-close-btn">Close</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('slot-web-spin-btn').addEventListener('click', spinSlotModal);
+  document.getElementById('slot-web-close-btn').addEventListener('click', closeGameModal);
 }
 
-async function spinWorldSlots() {
-  if (worldSlotSpinning || !worldSlotPanel) return;
-  worldSlotSpinning = true;
+async function spinSlotModal() {
+  if (slotModalSpinning) return;
+  slotModalSpinning = true;
+  const btn = document.getElementById('slot-web-spin-btn');
+  const resultBox = document.getElementById('slot-web-result');
+  const reels = [0, 1, 2].map(i => document.getElementById('slot-web-reel-' + i));
+  if (btn) btn.disabled = true;
+  if (resultBox) {
+    resultBox.className = 'slot-web-result result-pending';
+    resultBox.textContent = 'Spinning...';
+  }
   const { result, hash, nonce } = await ProvablyFair.rollSlots(3, slotSymbols.length);
-  const resultLight = worldSlotPanel.findByName('slot-world-result');
-  const cabinetReels = selectedSlotCabinetSet ? selectedSlotCabinetSet.reels : [];
-  const cabinetResultLight = selectedSlotCabinetSet ? selectedSlotCabinetSet.resultLight : null;
   let tick = 0;
-  const spinTimer = setInterval(() => {
+  slotModalTimer = setInterval(() => {
     tick++;
-    const settlingReel = tick > 32 ? 2 : tick > 24 ? 1 : tick > 16 ? 0 : -1;
+    const settlingReel = tick > 34 ? 2 : tick > 25 ? 1 : tick > 16 ? 0 : -1;
     for (let r = 0; r < 3; r++) {
-      const symbol = r < settlingReel ? result[r] : Math.floor(Math.random() * slotSymbols.length);
-      if (worldSlotReels[r]) {
-        setReelVisual(worldSlotReels[r], symbol);
-        worldSlotReels[r].rotateLocal(0, 0, 42 + r * 10);
-      }
-      if (cabinetReels[r]) {
-        setReelVisual(cabinetReels[r], symbol);
-        cabinetReels[r].rotateLocal(0, 0, 55 + r * 13);
-      }
+      if (!reels[r]) continue;
+      const symbolIndex = r < settlingReel ? result[r] : Math.floor(Math.random() * slotSymbols.length);
+      reels[r].textContent = slotSymbols[symbolIndex];
+      reels[r].classList.toggle('spinning', r >= settlingReel);
     }
     if (tick >= 44) {
-      clearInterval(spinTimer);
+      clearInterval(slotModalTimer);
+      slotModalTimer = null;
       for (let r = 0; r < 3; r++) {
-        if (worldSlotReels[r]) setReelVisual(worldSlotReels[r], result[r]);
-        if (cabinetReels[r]) setReelVisual(cabinetReels[r], result[r]);
+        if (reels[r]) {
+          reels[r].textContent = slotSymbols[result[r]];
+          reels[r].classList.remove('spinning');
+        }
       }
       const jackpot = result[0] === result[1] && result[1] === result[2];
       const pair = result[0] === result[1] || result[1] === result[2] || result[0] === result[2];
-      const finalMat = jackpot ? matGlowGold : pair ? matGlowGreen : matGlowRed;
-      const mi = resultLight && resultLight.model && resultLight.model.meshInstances[0];
-      const cmi = cabinetResultLight && cabinetResultLight.model && cabinetResultLight.model.meshInstances[0];
-      if (mi) mi.material = finalMat;
-      if (cmi) cmi.material = finalMat;
-      console.log('[Slots 3D]', { result, nonce, hash: hash.slice(0, 16), jackpot, pair });
-      setTimeout(() => {
-        activeGame = null;
-        closeWorldSlotPanel();
-        selectedSlotCabinetSet = null;
-      }, 5200);
+      const payout = jackpot ? slotPayouts[slotSymbols[result[0]]] * 100 : pair ? 150 : 0;
+      if (resultBox) {
+        resultBox.className = 'slot-web-result ' + (payout > 0 ? 'result-win' : 'result-lose');
+        resultBox.textContent = jackpot ? `JACKPOT! +${payout} CHIPS` : pair ? `PAIR! +${payout} CHIPS` : 'No win — try again';
+      }
+      if (btn) btn.disabled = false;
+      slotModalSpinning = false;
+      console.log('[Slots Modal]', { result: result.map(i => slotSymbols[i]), nonce, hash: hash.slice(0, 16), jackpot, pair, payout });
     }
-  }, 75);
+  }, 70);
 }
 
 // ===== GAME 2: LUCKY WHEEL =====
