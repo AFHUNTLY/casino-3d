@@ -924,9 +924,50 @@ function addFullCasinoSceneGLB() {
     );
     if (scene) {
       window.__mainCasinoSceneLoaded = true;
+      hideLegacyEnvironmentPrimitives();
       console.log('[Assets] Added full casino scene GLB as static environment layer');
     }
   });
+}
+
+function hideLegacyEnvironmentPrimitives() {
+  // Hide only the old hand-built architectural shell / set dressing. Keep game
+  // entities and interaction markers alive so gameplay does not break while we
+  // align each game to the imported casino scene in later passes.
+  const exactNames = new Set([
+    'tile', 'carpet', 'carpet-border-l', 'carpet-border-r',
+    'wall-back', 'wall-front', 'wall-left', 'wall-right', 'ceiling',
+    'trim-back', 'trim-front', 'trim-left', 'trim-right',
+    'chain', 'chandelier', 'ch-ring', 'ch-light',
+    'bar-top', 'bar-front',
+    'pillar', 'pillar-base', 'pillar-cap',
+    'arch-l', 'arch-r', 'arch-top',
+    'stanchion', 'stanchion-cap', 'velvet-rope',
+    'podium-ring', 'table-pit-carpet', 'inside-track-carpet',
+    'table-lamp-chain', 'table-lamp-shade', 'table-lamp-glow',
+    'slots-left-zone-strip', 'slots-right-zone-strip', 'inside-track-zone-strip'
+  ]);
+  const prefixNames = ['neon-', 'bottle-'];
+  let hidden = 0;
+
+  function shouldHide(entity) {
+    const name = entity.name || '';
+    return exactNames.has(name) || prefixNames.some(prefix => name.startsWith(prefix));
+  }
+
+  function walk(entity) {
+    if (entity !== app.root && shouldHide(entity)) {
+      entity.enabled = false;
+      hidden++;
+      return;
+    }
+    const children = entity.children || [];
+    for (let i = 0; i < children.length; i++) walk(children[i]);
+  }
+
+  walk(app.root);
+  window.__legacyEnvironmentHiddenCount = hidden;
+  console.log('[Assets] Hidden legacy primitive environment entities:', hidden);
 }
 
 function replacePrimitiveSlotsWithGLB() {
