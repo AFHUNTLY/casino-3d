@@ -444,6 +444,7 @@ rouletteWorldWheel.addChild(rouletteResultMarker);
 app.root.addChild(rouletteWorldWheel);
 
 // ===== INSIDE TRACK (Horse Racing) =====
+const insideTrackHorsesDraftOdds = [2.1, 3.4, 4.8, 6.2, 8.5, 12.0];
 const track = new pc.Entity('inside-track');
 track.setLocalPosition(0, 0, -15.8);
 
@@ -472,16 +473,26 @@ track.addChild(makeBox('it-sign', [0, 8.5, 0.3], [6, 0.8, 0.2], makeMat(rgb(0x00
 const insideTrackWorldHorses = [];
 const insideTrackWorldHorseLabels = [];
 const insideTrackWorldLanePulses = [];
+const insideTrackSelectionMarkers = [];
+const insideTrackOddsBars = [];
 const insideTrackHorseMats = [matGlowGold, matGlowBlue, matGlowRed, matGlowGreen, matGlowPink, matGlowWhite];
 const insideTrackDimLaneMat = makeMat(rgb(0x07130b), rgb(0x003311), 0.25, 0, 0.8);
 const insideTrackRaceLaneMat = makeMat(rgb(0x07331a), rgb(0x00ff7a), 0.9, 0, 0.7);
+const insideTrackSelectedLaneMat = makeMat(rgb(0x2e2600), rgb(0xffd700), 1.2, 0, 0.55);
+const insideTrackWinMat = makeMat(rgb(0x14330a), rgb(0x35ff6b), 1.5, 0, 0.45);
+const insideTrackLoseMat = makeMat(rgb(0x330606), rgb(0xff3333), 1.3, 0, 0.45);
 const insideTrackFinishLine = makeBox('it-finish-line', [5.15, 4.55, 0.34], [0.08, 3.8, 0.10], matGlowWhite);
 const insideTrackStartLight = makeBox('it-start-light', [-5.15, 7.25, 0.36], [1.2, 0.18, 0.10], matGlowRed);
+const insideTrackPayoutLight = makeBox('it-payout-light', [3.65, 7.25, 0.36], [3.0, 0.18, 0.10], matGlowGold);
 track.addChild(insideTrackFinishLine);
 track.addChild(insideTrackStartLight);
+track.addChild(insideTrackPayoutLight);
 for (let i = 0; i < 6; i++) {
   const laneY = 3.0 + i * 0.62;
   const lane = makeBox('it-world-lane-' + i, [0, laneY, 0.18], [10.6, 0.06, 0.06], insideTrackDimLaneMat);
+  const marker = makeBox('it-selected-marker-' + i, [-5.65, laneY, 0.42], [0.20, 0.34, 0.08], insideTrackDimLaneMat);
+  const oddsBarWidth = Math.min(2.5, insideTrackHorsesDraftOdds[i] / 12 * 2.5);
+  const oddsBar = makeBox('it-odds-bar-' + i, [3.35 + oddsBarWidth / 2, laneY, 0.42], [oddsBarWidth, 0.08, 0.05], insideTrackHorseMats[i]);
   const horse = new pc.Entity('it-world-horse-' + i);
   horse.setLocalPosition(-5.0, laneY + 0.05, 0.32);
   horse.addChild(makeBox('horse-body-' + i, [0, 0, 0], [0.42, 0.18, 0.12], insideTrackHorseMats[i]));
@@ -490,11 +501,15 @@ for (let i = 0; i < 6; i++) {
   horse.addChild(makeBox('horse-leg-b-' + i, [0.13, -0.15, 0], [0.06, 0.17, 0.05], insideTrackHorseMats[i]));
   const label = makeBox('it-place-label-' + i, [-5.0, laneY + 0.05, 0.53], [0.32, 0.06, 0.05], insideTrackHorseMats[i]);
   track.addChild(lane);
+  track.addChild(marker);
+  track.addChild(oddsBar);
   track.addChild(horse);
   track.addChild(label);
   insideTrackWorldHorses.push(horse);
   insideTrackWorldHorseLabels.push(label);
   insideTrackWorldLanePulses.push(lane);
+  insideTrackSelectionMarkers.push(marker);
+  insideTrackOddsBars.push(oddsBar);
 }
 
 app.root.addChild(track);
@@ -735,10 +750,11 @@ function checkNearbyGames() {
   if (closest) {
     nearbyGame = closest;
     prompt.style.display = 'block';
-    document.getElementById('game-prompt-text').textContent = 'Play ' + closest.name;
+    const promptText = closest.promptText ? closest.promptText() : ('Play ' + closest.name);
+    document.getElementById('game-prompt-text').textContent = promptText;
     if (mobilePlayBtn) {
       mobilePlayBtn.style.display = _isTouchDevice ? 'block' : 'none';
-      mobilePlayBtn.textContent = 'PLAY';
+      mobilePlayBtn.textContent = closest.mobileText ? closest.mobileText() : 'PLAY';
     }
   } else {
     nearbyGame = null;
@@ -758,6 +774,11 @@ if (mobilePlayBtn) {
 
 // E key to interact
 document.addEventListener('keydown', (e) => {
+  if (!activeGame && nearbyGame && nearbyGame.name.includes('Inside Track') && /^Digit[1-6]$/.test(e.code)) {
+    e.preventDefault();
+    selectInsideTrackHorse(parseInt(e.code.replace('Digit', ''), 10) - 1);
+    return;
+  }
   if (e.code === 'KeyE' && nearbyGame && !activeGame) {
     e.preventDefault();
     openGameModal(nearbyGame);
@@ -972,14 +993,57 @@ const insideTrackHorses = [
   { name: 'Long Shot', emoji: '🐎', odds: 12.0, color: '#ffffff' },
 ];
 
-registerGame('🏇 Inside Track', [0, 0, -15.8], 5.2, openInsideTrack, { worldInteract: true });
+let selectedInsideTrackHorse = 0;
+const insideTrackBetAmount = 100;
+function getInsideTrackPromptText() {
+  const h = insideTrackHorses[selectedInsideTrackHorse];
+  return `Inside Track: ${selectedInsideTrackHorse + 1}. ${h.name} (${h.odds}x) — press 1-6 to pick, E to race`;
+}
+function getInsideTrackMobileText() {
+  return `RACE #${selectedInsideTrackHorse + 1}`;
+}
+registerGame('🏇 Inside Track', [0, 0, -15.8], 5.2, openInsideTrack, {
+  worldInteract: true,
+  promptText: getInsideTrackPromptText,
+  mobileText: getInsideTrackMobileText
+});
+
+function setEntityMaterial(entity, material) {
+  const mi = entity && entity.model && entity.model.meshInstances && entity.model.meshInstances[0];
+  if (mi) mi.material = material;
+}
+
+function selectInsideTrackHorse(index) {
+  selectedInsideTrackHorse = Math.max(0, Math.min(insideTrackHorses.length - 1, index));
+  updateInsideTrackSelectionVisual();
+}
+
+function updateInsideTrackSelectionVisual(resultState = null, winner = null) {
+  for (let i = 0; i < insideTrackHorses.length; i++) {
+    const selected = i === selectedInsideTrackHorse;
+    const laneMat = selected ? insideTrackSelectedLaneMat : insideTrackDimLaneMat;
+    setEntityMaterial(insideTrackWorldLanePulses[i], laneMat);
+    setEntityMaterial(insideTrackSelectionMarkers[i], selected ? matGlowGold : insideTrackDimLaneMat);
+    setEntityMaterial(insideTrackOddsBars[i], selected ? matGlowGold : insideTrackHorseMats[i]);
+  }
+  if (resultState) {
+    const pickedWon = resultState === 'win';
+    setEntityMaterial(insideTrackWorldLanePulses[selectedInsideTrackHorse], pickedWon ? insideTrackWinMat : insideTrackLoseMat);
+    setEntityMaterial(insideTrackSelectionMarkers[selectedInsideTrackHorse], pickedWon ? matGlowGreen : matGlowRed);
+    if (winner !== null) setEntityMaterial(insideTrackSelectionMarkers[winner], matGlowGold);
+    setEntityMaterial(insideTrackPayoutLight, pickedWon ? matGlowGreen : matGlowRed);
+  } else {
+    setEntityMaterial(insideTrackPayoutLight, matGlowGold);
+  }
+}
+updateInsideTrackSelectionVisual();
 
 let insideTrackWorldRunning = false;
 function openInsideTrack() {
-  runInsideTrackWorldRace();
+  runInsideTrackWorldRace(selectedInsideTrackHorse);
 }
 
-async function runInsideTrackWorldRace() {
+async function runInsideTrackWorldRace(selectedHorseIndex = selectedInsideTrackHorse) {
   if (insideTrackWorldRunning) return;
   insideTrackWorldRunning = true;
   const { finishOrder, hash, nonce } = await ProvablyFair.rollHorseRace(insideTrackHorses.length);
@@ -989,6 +1053,7 @@ async function runInsideTrackWorldRace() {
   const startMi = insideTrackStartLight.model && insideTrackStartLight.model.meshInstances[0];
   if (signMi) signMi.material = matGlowRed;
   if (startMi) startMi.material = matGlowRed;
+  setEntityMaterial(insideTrackPayoutLight, matGlowGold);
 
   for (let i = 0; i < insideTrackWorldHorses.length; i++) {
     insideTrackWorldHorses[i].setLocalPosition(-5.0, 3.05 + i * 0.62, 0.32);
@@ -1047,15 +1112,19 @@ async function runInsideTrackWorldRace() {
       }
       const winnerLabelMi = insideTrackWorldHorseLabels[winner] && insideTrackWorldHorseLabels[winner].model && insideTrackWorldHorseLabels[winner].model.meshInstances[0];
       if (winnerLabelMi) winnerLabelMi.material = matGlowGold;
-      if (signMi) signMi.material = insideTrackHorseMats[winner] || matGlowGold;
+      const pickedWon = selectedHorseIndex === winner;
+      const payout = pickedWon ? Math.floor(insideTrackBetAmount * insideTrackHorses[winner].odds) : 0;
+      if (signMi) signMi.material = pickedWon ? matGlowGreen : matGlowRed;
       for (let i = 0; i < insideTrackWorldLanePulses.length; i++) {
         const laneMi = insideTrackWorldLanePulses[i].model && insideTrackWorldLanePulses[i].model.meshInstances[0];
         if (laneMi) laneMi.material = i === winner ? matGlowGold : insideTrackDimLaneMat;
       }
-      console.log('[Inside Track 3D]', { winner: insideTrackHorses[winner].name, finishOrder, durationSeconds: duration + countdown, nonce, hash: hash.slice(0, 16) });
+      updateInsideTrackSelectionVisual(pickedWon ? 'win' : 'lose', winner);
+      console.log('[Inside Track 3D]', { selected: insideTrackHorses[selectedHorseIndex].name, winner: insideTrackHorses[winner].name, pickedWon, bet: insideTrackBetAmount, payout, finishOrder, durationSeconds: duration + countdown, nonce, hash: hash.slice(0, 16) });
       setTimeout(() => {
         activeGame = null;
         insideTrackWorldRunning = false;
+        updateInsideTrackSelectionVisual();
       }, 4200);
     }
   };
