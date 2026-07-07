@@ -614,6 +614,7 @@ for (let i = 0; i < 8; i++) {
   luckyWheelPrizeMarkers.push(marker, label);
 }
 let luckyWheelGLBEntity = null;
+let luckyWheelGLBWheelEntity = null;
 // Pointer at top
 luckyWheel.addChild(makeBox('lw-pointer', [0, 3.8, 0.4], [0.2, 0.3, 0.1], matGold, [0, 0, 180]));
 // Sign
@@ -986,7 +987,9 @@ async function spinLuckyWheelWorld() {
     const eased = t < 0.82
       ? 1 - Math.pow(1 - t / 0.82, 3)
       : 1 + Math.sin((t - 0.82) / 0.18 * Math.PI) * 0.018;
-    luckyWheelSpinRoot.setLocalEulerAngles(0, 0, start + (target - start) * eased);
+    const spinZ = start + (target - start) * eased;
+    luckyWheelSpinRoot.setLocalEulerAngles(0, 0, spinZ);
+    if (luckyWheelGLBWheelEntity) luckyWheelGLBWheelEntity.setLocalEulerAngles(0, 0, spinZ);
     if (t >= 1) {
       app.off('update', spinUpdate);
       if (mi) mi.material = resultMat;
@@ -1179,14 +1182,14 @@ function updateInsideTrackCinematic(elapsed, countdown, duration) {
   if (!insideTrackCinematicState) return;
   const raceT = Math.max(0, Math.min(1, (elapsed - countdown) / duration));
   const introT = Math.min(1, elapsed / countdown);
-  const pulse = Math.sin(elapsed * 1.6) * 0.16;
-  const camX = Math.sin(raceT * Math.PI * 2) * 0.34;
-  const camY = 2.72 + introT * 0.42 + pulse * 0.22;
-  const camZ = -7.9 - introT * 1.25 - raceT * 0.45;
+  const pulse = Math.sin(elapsed * 1.15) * 0.10;
+  const camX = Math.sin(raceT * Math.PI * 2) * 0.18;
+  const camY = 4.75 + pulse;
+  const camZ = -5.35 - introT * 0.55;
   camera.setLocalPosition(camX, camY, camZ);
-  camera.camera.fov = 60 - introT * 7 + Math.sin(raceT * Math.PI) * 2;
-  const targetX = Math.sin(elapsed * 0.75) * 0.16;
-  const targetY = 4.95 + Math.sin(elapsed * 1.1) * 0.06;
+  camera.camera.fov = 74 - introT * 4 + Math.sin(raceT * Math.PI) * 1.2;
+  const targetX = Math.sin(elapsed * 0.55) * 0.08;
+  const targetY = 5.05 + Math.sin(elapsed * 0.9) * 0.04;
   camera.lookAt(targetX, targetY, -15.8);
 }
 
@@ -1353,7 +1356,86 @@ async function openCoinFlip() {
   });
 }
 
-// ===== GAME 6: ROULETTE =====
+// ===== GAME 6: BLACKJACK =====
+registerGame('🃏 Blackjack', [-4.3, 0, 12.5], 4.2, openBlackjack);
+let blackjackState = null;
+
+function cardLabel(card) {
+  const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  const suits = ['♥','♦','♣','♠'];
+  return ranks[card % 13] + suits[Math.floor(card / 13)];
+}
+function blackjackValue(cards) {
+  let total = 0, aces = 0;
+  for (const card of cards) {
+    const rank = card % 13;
+    if (rank === 0) { total += 11; aces++; }
+    else total += rank >= 10 ? 10 : rank + 1;
+  }
+  while (total > 21 && aces > 0) { total -= 10; aces--; }
+  return total;
+}
+function renderBlackjack() {
+  const p = blackjackState.player.map(cardLabel).join('  ');
+  const dCards = blackjackState.done ? blackjackState.dealer : [blackjackState.dealer[0]];
+  const d = dCards.map(cardLabel).join('  ') + (blackjackState.done ? '' : '  ??');
+  const pv = blackjackValue(blackjackState.player);
+  const dv = blackjackState.done ? blackjackValue(blackjackState.dealer) : '?';
+  const resultClass = blackjackState.done ? (blackjackState.win ? 'result-win' : blackjackState.push ? 'result-pending' : 'result-lose') : 'result-pending';
+  const resultText = blackjackState.done ? blackjackState.message : 'Choose HIT or STAND';
+  setModalContent(`
+    <div style="min-width:min(460px,86vw);display:flex;flex-direction:column;gap:14px">
+      <div class="bet-row"><label>Dealer</label><b style="color:#ffd700;font-size:22px">${d}</b><span>${dv}</span></div>
+      <div class="bet-row"><label>Player</label><b style="color:#4ff;font-size:22px">${p}</b><span>${pv}</span></div>
+      <div class="result-box ${resultClass}">${resultText}</div>
+      <button class="btn-primary" id="bj-hit" ${blackjackState.done ? 'disabled' : ''}>HIT</button>
+      <button class="btn-secondary" id="bj-stand" ${blackjackState.done ? 'disabled' : ''}>STAND</button>
+      <button class="btn-secondary" id="bj-new">NEW HAND</button>
+    </div>
+  `);
+  document.getElementById('bj-hit').addEventListener('click', blackjackHit);
+  document.getElementById('bj-stand').addEventListener('click', blackjackStand);
+  document.getElementById('bj-new').addEventListener('click', openBlackjack);
+}
+async function openBlackjack() {
+  setModalSub('Provably fair deck from HMAC-SHA256 · dealer stands on 17');
+  const { cards, hash, nonce } = await ProvablyFair.rollCards(10);
+  blackjackState = { deck: cards, cursor: 4, player: [cards[0], cards[2]], dealer: [cards[1], cards[3]], hash, nonce, done: false };
+  renderBlackjack();
+  console.log('[Blackjack] deal', { nonce, hash: hash.slice(0, 16) });
+}
+function finishBlackjack() {
+  while (blackjackValue(blackjackState.dealer) < 17 && blackjackState.cursor < blackjackState.deck.length) {
+    blackjackState.dealer.push(blackjackState.deck[blackjackState.cursor++]);
+  }
+  const pv = blackjackValue(blackjackState.player);
+  const dv = blackjackValue(blackjackState.dealer);
+  blackjackState.done = true;
+  blackjackState.win = pv <= 21 && (dv > 21 || pv > dv);
+  blackjackState.push = pv <= 21 && pv === dv;
+  blackjackState.message = blackjackState.win ? 'YOU WIN +200 CHIPS' : blackjackState.push ? 'PUSH — BET RETURNED' : 'DEALER WINS';
+  renderBlackjack();
+  console.log('[Blackjack] result', { player: pv, dealer: dv, win: blackjackState.win, push: blackjackState.push });
+}
+function blackjackHit() {
+  if (!blackjackState || blackjackState.done) return;
+  blackjackState.player.push(blackjackState.deck[blackjackState.cursor++]);
+  if (blackjackValue(blackjackState.player) > 21) {
+    blackjackState.done = true;
+    blackjackState.win = false;
+    blackjackState.push = false;
+    blackjackState.message = 'BUST — DEALER WINS';
+    renderBlackjack();
+    return;
+  }
+  renderBlackjack();
+}
+function blackjackStand() {
+  if (!blackjackState || blackjackState.done) return;
+  finishBlackjack();
+}
+
+// ===== GAME 7: ROULETTE =====
 const rouletteRedNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 registerGame('🎲 Roulette', [0, 0, 1.5], 4.2, openRoulette, { worldInteract: true });
 
@@ -1520,13 +1602,28 @@ function replaceLuckyWheelWithGLB() {
     }
     luckyWheelGLBEntity = instantiateContainerChild(
       wheelAsset,
-      luckyWheelSpinRoot,
+      luckyWheel,
       'glb-lucky-wheel-low-poly-spinning-wheel',
-      [0, 0.10, 0.22],
-      [0, 0, 0],
+      [0, 0.10, 0.20],
+      [0, 180, 0],
       [2.35, 2.35, 2.35]
     );
-    if (luckyWheelGLBEntity) console.log('[Assets] Replaced procedural Lucky Wheel with GLB spinning wheel');
+    luckyWheelGLBWheelEntity = luckyWheelGLBEntity && luckyWheelGLBEntity.findByName('Cylinder_1');
+    if (luckyWheelGLBWheelEntity) luckyWheelGLBWheelEntity.setLocalEulerAngles(0, 0, 0);
+    if (luckyWheelGLBEntity) console.log('[Assets] Replaced Lucky Wheel with GLB stand; rotating child:', !!luckyWheelGLBWheelEntity);
+  });
+}
+
+function addBlackjackGLB() {
+  loadContainerAsset('blackjack-table-glb', '/assets/models/blackjack-baf7e3cb.glb', (blackjackAsset) => {
+    const table = instantiateContainer(
+      blackjackAsset,
+      'glb-blackjack-table',
+      [-4.3, 0.02, 12.5],
+      [0, 180, 0],
+      [1.25, 1.25, 1.25]
+    );
+    if (table) console.log('[Assets] Added Sketchfab Blackjack table model');
   });
 }
 
@@ -1587,6 +1684,7 @@ addFullCasinoSceneGLB();
 hidePrototypeGameProps();
 replaceLuckyWheelWithGLB();
 addDiceAndCoinGLBs();
+addBlackjackGLB();
 replaceRouletteWithGLB();
 
 // ===== PERFORMANCE OPTIMIZATION =====
