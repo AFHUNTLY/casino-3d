@@ -650,8 +650,8 @@ const interactiveObjects = [];
 let nearbyGame = null;
 let activeGame = null;
 
-function registerGame(name, position, radius, openFn) {
-  interactiveObjects.push({ name, position: new pc.Vec3(position[0], position[1], position[2]), radius, openFn });
+function registerGame(name, position, radius, openFn, options = {}) {
+  interactiveObjects.push({ name, position: new pc.Vec3(position[0], position[1], position[2]), radius, openFn, ...options });
 }
 
 function checkNearbyGames() {
@@ -710,11 +710,15 @@ document.addEventListener('keydown', (e) => {
 
 function openGameModal(game) {
   activeGame = game;
-  // Exit pointer lock so user can interact with modal
+  // Exit pointer lock so user can interact with modal / 3D controls.
   if (document.pointerLockElement) document.exitPointerLock();
   document.getElementById('game-prompt').style.display = 'none';
   const mobilePlayBtn = document.getElementById('mobile-play-btn');
   if (mobilePlayBtn) mobilePlayBtn.style.display = 'none';
+  if (game.worldInteract) {
+    game.openFn();
+    return;
+  }
   document.getElementById('game-modal').style.display = 'flex';
   document.getElementById('game-modal-title').textContent = game.name;
   game.openFn();
@@ -722,6 +726,7 @@ function openGameModal(game) {
 
 function closeGameModal() {
   activeGame = null;
+  closeWorldSlotPanel();
   document.getElementById('game-modal').style.display = 'none';
   document.getElementById('game-modal-content').innerHTML = '';
 }
@@ -743,87 +748,89 @@ const slotPayouts = { '7️⃣': 50, '💎': 20, '🔔': 10, '🍒': 5, '🍋': 
 
 for (let i = 0; i < slotPositions.length; i++) {
   const [sx, sz] = slotPositions[i];
-  registerGame('🎰 Slots #' + (i + 1), [sx, 0, sz], 3.5, () => openSlots(i));
+  registerGame('🎰 Slots #' + (i + 1), [sx, 0, sz], 3.5, () => openSlots(i), { worldInteract: true });
+}
+
+let worldSlotPanel = null;
+let worldSlotReels = [];
+let worldSlotSpinning = false;
+
+function closeWorldSlotPanel() {
+  if (worldSlotPanel) {
+    worldSlotPanel.destroy();
+    worldSlotPanel = null;
+    worldSlotReels = [];
+  }
+  worldSlotSpinning = false;
+}
+
+function makeSlotReelMat(index, glow = 1.8) {
+  const colors = [0xffd700, 0x00e5ff, 0xff2d55, 0x7cff4d, 0xff8c00, 0xffffff, 0xb46bff, 0x00ffaa];
+  const hex = colors[index % colors.length];
+  return makeMat(rgb(hex), rgb(hex), glow, 0.2, 0.25);
+}
+
+function setReelVisual(entity, symbolIndex) {
+  const mi = entity.model && entity.model.meshInstances && entity.model.meshInstances[0];
+  if (mi) mi.material = makeSlotReelMat(symbolIndex);
+  entity.setLocalEulerAngles(0, 0, symbolIndex * 45);
 }
 
 function openSlots(slotIndex) {
-  setModalSub('Provably Fair • 3 Reels • Match 3 to win');
-  setModalContent(`
-    <div class="bet-row">
-      <label>Bet Amount (ETH)</label>
-      <input type="number" id="slot-bet" value="0.001" min="0.0001" step="0.0001" style="width:120px"/>
-    </div>
-    <div style="display:flex;justify-content:center;gap:12px;margin:24px 0">
-      <div id="reel0" style="font-size:48px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.3);border-radius:12px;width:80px;height:90px;display:flex;align-items:center;justify-content:center">?</div>
-      <div id="reel1" style="font-size:48px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.3);border-radius:12px;width:80px;height:90px;display:flex;align-items:center;justify-content:center">?</div>
-      <div id="reel2" style="font-size:48px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.3);border-radius:12px;width:80px;height:90px;display:flex;align-items:center;justify-content:center">?</div>
-    </div>
-    <div style="text-align:center;color:#888;font-size:13px;margin-bottom:8px">
-      7️⃣=50x 💎=20x 🔔=10x ⭐=8x 🍒=5x 🍀=4x 🍋🍊=3x
-    </div>
-    <div id="slot-result"></div>
-    <button class="btn-primary" id="slot-spin">🎰 SPIN</button>
-    <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
-  `);
+  if (worldSlotSpinning) return;
+  closeWorldSlotPanel();
+  const slot = SLOT_LAYOUT[slotIndex] || SLOT_LAYOUT[0];
+  worldSlotPanel = new pc.Entity('world-slot-panel');
+  worldSlotPanel.setLocalPosition(slot.x, 0, slot.z);
+  worldSlotPanel.setLocalEulerAngles(0, slot.rotY, 0);
 
-  document.getElementById('slot-spin').addEventListener('click', spinSlots);
-}
+  const back = makeBox('slot-world-back', [0, 2.1, 0.72], [2.35, 1.65, 0.12], makeMat(rgb(0x050508), rgb(0x442200), 0.5, 0.2, 0.3));
+  const frame = makeBox('slot-world-frame', [0, 2.1, 0.80], [2.55, 1.85, 0.08], matGold);
+  const resultLight = makeBox('slot-world-result', [0, 3.15, 0.88], [1.9, 0.18, 0.08], matGlowGold);
+  worldSlotPanel.addChild(frame);
+  worldSlotPanel.addChild(back);
+  worldSlotPanel.addChild(resultLight);
 
-let slotSpinning = false;
-function spinSlots() {
-  if (slotSpinning) return;
-  slotSpinning = true;
-
-  const btn = document.getElementById('slot-spin');
-  btn.disabled = true;
-  btn.textContent = '🎰 SPINNING...';
-  document.getElementById('slot-result').innerHTML = '<div class="result-box result-pending">🎲 Rolling...</div>';
-
-  const reels = [document.getElementById('reel0'), document.getElementById('reel1'), document.getElementById('reel2')];
-  const results = [];
-
-  // Animate each reel stopping sequentially
+  worldSlotReels = [];
   for (let r = 0; r < 3; r++) {
-    let spins = 0;
-    const maxSpins = 8 + r * 4; // Each reel spins longer
-    const interval = setInterval(() => {
-      reels[r].textContent = slotSymbols[Math.floor(Math.random() * slotSymbols.length)];
-      spins++;
-      if (spins >= maxSpins) {
-        clearInterval(interval);
-        results[r] = slotSymbols[Math.floor(Math.random() * slotSymbols.length)];
-        reels[r].textContent = results[r];
-
-        if (r === 2) {
-          // All reels stopped — check result
-          checkSlotResult(results);
-        }
-      }
-    }, 80);
+    const reel = makeBox('slot-world-reel-' + r, [-0.62 + r * 0.62, 2.1, 0.9], [0.46, 0.78, 0.10], makeSlotReelMat(r));
+    worldSlotPanel.addChild(reel);
+    worldSlotReels.push(reel);
   }
+  const lever = makeCylinder('slot-world-lever', [1.48, 2.1, 0.85], [0.08, 0.65, 0.08], matGold);
+  lever.setLocalEulerAngles(0, 0, 35);
+  worldSlotPanel.addChild(lever);
+
+  app.root.addChild(worldSlotPanel);
+  spinWorldSlots();
 }
 
-function checkSlotResult(results) {
-  slotSpinning = false;
-  const btn = document.getElementById('slot-spin');
-  btn.disabled = false;
-  btn.textContent = '🎰 SPIN AGAIN';
-
-  const resultDiv = document.getElementById('slot-result');
-  const bet = parseFloat(document.getElementById('slot-bet').value) || 0.001;
-
-  if (results[0] === results[1] && results[1] === results[2]) {
-    // Three of a kind!
-    const multiplier = slotPayouts[results[0]] || 3;
-    const winnings = bet * multiplier;
-    resultDiv.innerHTML = `<div class="result-box result-win">🎉 JACKPOT! ${results[0]} ${results[1]} ${results[2]}<br>Won ${winnings.toFixed(4)} ETH (${multiplier}x)</div>`;
-  } else if (results[0] === results[1] || results[1] === results[2]) {
-    // Two of a kind
-    const winnings = bet * 0.5;
-    resultDiv.innerHTML = `<div class="result-box result-win">✨ Two of a kind!<br>Won ${winnings.toFixed(4)} ETH (0.5x)</div>`;
-  } else {
-    resultDiv.innerHTML = `<div class="result-box result-lose">💔 No match — try again!</div>`;
-  }
+async function spinWorldSlots() {
+  if (worldSlotSpinning || !worldSlotPanel) return;
+  worldSlotSpinning = true;
+  const { result, hash, nonce } = await ProvablyFair.rollSlots(3, slotSymbols.length);
+  const resultLight = worldSlotPanel.findByName('slot-world-result');
+  let tick = 0;
+  const spinTimer = setInterval(() => {
+    tick++;
+    for (let r = 0; r < 3; r++) {
+      setReelVisual(worldSlotReels[r], Math.floor(Math.random() * slotSymbols.length));
+      worldSlotReels[r].rotateLocal(0, 0, 35 + r * 8);
+    }
+    if (tick >= 28) {
+      clearInterval(spinTimer);
+      for (let r = 0; r < 3; r++) setReelVisual(worldSlotReels[r], result[r]);
+      const jackpot = result[0] === result[1] && result[1] === result[2];
+      const pair = result[0] === result[1] || result[1] === result[2] || result[0] === result[2];
+      const mi = resultLight && resultLight.model && resultLight.model.meshInstances[0];
+      if (mi) mi.material = jackpot ? matGlowGold : pair ? matGlowGreen : matGlowRed;
+      console.log('[Slots 3D]', { result, nonce, hash: hash.slice(0, 16), jackpot, pair });
+      setTimeout(() => {
+        activeGame = null;
+        closeWorldSlotPanel();
+      }, 5200);
+    }
+  }, 70);
 }
 
 // ===== GAME 2: LUCKY WHEEL =====
