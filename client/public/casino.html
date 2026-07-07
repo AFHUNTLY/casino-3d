@@ -78,7 +78,9 @@ canvas{display:block;width:100%;height:100%}
 #joystick-base{width:100%;height:100%;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,215,0,.2);position:relative;touch-action:none}
 #joystick-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,215,0,.3);border:2px solid rgba(255,215,0,.5);touch-action:none}
 #look-area{position:fixed;bottom:0;right:0;width:50%;height:60%;pointer-events:auto;touch-action:none}
-@media (pointer:coarse) and (max-width:1024px){#mobile-controls{display:block} .crosshair{display:none!important}}
+#mobile-play-btn{position:fixed;right:22px;bottom:210px;display:none;min-width:118px;padding:15px 18px;border-radius:999px;border:1px solid rgba(255,215,0,.55);background:linear-gradient(135deg,#ffd700,#ff9500);color:#080500;font-size:16px;font-weight:900;letter-spacing:.6px;box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 22px rgba(255,215,0,.25);pointer-events:auto;touch-action:manipulation;z-index:111}
+#mobile-play-btn:active{transform:scale(.96)}
+@media (pointer:coarse) and (max-width:1024px){#mobile-controls{display:block} .crosshair{display:none!important} #game-prompt kbd{display:none} #game-prompt{bottom:22%;font-size:14px;padding:9px 16px}}
 </style>
 </head>
 <body>
@@ -119,6 +121,7 @@ canvas{display:block;width:100%;height:100%}
 <div id="mobile-controls">
 <div id="joystick"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
 <div id="look-area"></div>
+<button id="mobile-play-btn" type="button">PLAY</button>
 </div>
 
 <div id="loading">
@@ -668,14 +671,29 @@ function checkNearbyGames() {
   }
 
   const prompt = document.getElementById('game-prompt');
+  const mobilePlayBtn = document.getElementById('mobile-play-btn');
   if (closest) {
     nearbyGame = closest;
     prompt.style.display = 'block';
     document.getElementById('game-prompt-text').textContent = 'Play ' + closest.name;
+    if (mobilePlayBtn) {
+      mobilePlayBtn.style.display = _isTouchDevice ? 'block' : 'none';
+      mobilePlayBtn.textContent = 'PLAY';
+    }
   } else {
     nearbyGame = null;
     prompt.style.display = 'none';
+    if (mobilePlayBtn) mobilePlayBtn.style.display = 'none';
   }
+}
+
+const mobilePlayBtn = document.getElementById('mobile-play-btn');
+if (mobilePlayBtn) {
+  mobilePlayBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (nearbyGame && !activeGame) openGameModal(nearbyGame);
+  });
 }
 
 // E key to interact
@@ -694,6 +712,8 @@ function openGameModal(game) {
   // Exit pointer lock so user can interact with modal
   if (document.pointerLockElement) document.exitPointerLock();
   document.getElementById('game-prompt').style.display = 'none';
+  const mobilePlayBtn = document.getElementById('mobile-play-btn');
+  if (mobilePlayBtn) mobilePlayBtn.style.display = 'none';
   document.getElementById('game-modal').style.display = 'flex';
   document.getElementById('game-modal-title').textContent = game.name;
   game.openFn();
