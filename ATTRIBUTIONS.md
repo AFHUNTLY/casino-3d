@@ -6,11 +6,7 @@ This project uses free downloadable 3D assets from Sketchfab and other open sour
 
 | Asset | Author | Source | License | Usage |
 |---|---|---|---|---|
-| Slot Machine | carlin.chu | https://sketchfab.com/3d-models/none-a0804f3975964221b9332af15f0beda5 | CC Attribution | Casino slot rows |
-| Stylized Jackpot Slot Machine | Burak Özcan | https://sketchfab.com/3d-models/none-cc13049ec275468a9e41e62079da0d4c | CC Attribution | Casino slot rows / variants |
-| Blackjack Table | Ravi Jangid | https://sketchfab.com/3d-models/none-baf7e3cbd14140ca81ea1a79d28fb635 | CC Attribution | Card game area |
 | Roulette Table | Robilben | https://sketchfab.com/3d-models/none-18a27b0e326644a0b47887d07e0d0f99 | CC Attribution | Roulette table area |
-| Low Poly Horse | Ravenlilli | https://sketchfab.com/3d-models/none-482710cb9b0b4020a852ee709abd6cb9 | CC Attribution | Inside Track horse racing |
 | Gameready Casino Scene | Katydid | https://sketchfab.com/3d-models/gameready-casino-scene-685736a30da846b4ad7f2ddb3b9a56fc | Free Standard | Full casino scene test/reference asset |
 
 ## Notes

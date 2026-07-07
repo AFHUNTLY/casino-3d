@@ -890,6 +890,85 @@ async function spinLuckyWheel() {
   }, 3100);
 }
 
+// ===== GAME 3: INSIDE TRACK (GTA-style Horse Racing) =====
+const insideTrackHorses = [
+  { name: 'Diamond Thunder', emoji: '🐎', odds: 2.1, color: '#ffd700' },
+  { name: 'Neon Mirage', emoji: '🐎', odds: 3.4, color: '#00d4ff' },
+  { name: 'Red Baron', emoji: '🐎', odds: 4.8, color: '#ff3b3b' },
+  { name: 'Lucky Clover', emoji: '🐎', odds: 6.2, color: '#35ff6b' },
+  { name: 'Midnight Ace', emoji: '🐎', odds: 8.5, color: '#b46bff' },
+  { name: 'Long Shot', emoji: '🐎', odds: 12.0, color: '#ffffff' },
+];
+
+registerGame('🏇 Inside Track', [0, 0, -15.8], 5.2, openInsideTrack);
+
+function openInsideTrack() {
+  setModalSub('GTA-style virtual horse racing • Pick a horse • Provably Fair');
+  setModalContent(`
+    <div style="min-width:min(560px,86vw)">
+      <div class="bet-row">
+        <label>Bet Amount (ETH)</label>
+        <input type="number" id="horse-bet" value="0.001" min="0.0001" step="0.0001" style="width:130px"/>
+      </div>
+      <div class="bet-row">
+        <label>Pick Horse</label>
+        <select id="horse-pick" style="width:230px">
+          ${insideTrackHorses.map((h, i) => `<option value="${i}">${i + 1}. ${h.name} — ${h.odds.toFixed(1)}x</option>`).join('')}
+        </select>
+      </div>
+      <div id="race-track" style="margin:16px 0;padding:12px;background:linear-gradient(180deg,rgba(0,60,20,.45),rgba(0,0,0,.55));border:1px solid rgba(255,215,0,.25);border-radius:12px;overflow:hidden">
+        ${insideTrackHorses.map((h, i) => `
+          <div style="position:relative;height:34px;margin:6px 0;background:rgba(255,255,255,.06);border-radius:999px;border-left:4px solid ${h.color}">
+            <span style="position:absolute;left:8px;top:7px;font-size:12px;color:#ddd;z-index:2">${i + 1}</span>
+            <span id="horse-runner-${i}" style="position:absolute;left:30px;top:3px;font-size:24px;transition:left 2.8s cubic-bezier(.15,.75,.2,1);filter:drop-shadow(0 2px 3px #000)">${h.emoji}</span>
+            <span style="position:absolute;right:10px;top:8px;font-size:12px;color:${h.color};font-weight:700">${h.odds.toFixed(1)}x</span>
+          </div>
+        `).join('')}
+      </div>
+      <div id="horse-result"></div>
+      <button class="btn-primary" id="horse-race-btn">🏇 START RACE</button>
+      <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
+    </div>
+  `);
+  document.getElementById('horse-race-btn').addEventListener('click', runInsideTrackRace);
+}
+
+let horseRaceRunning = false;
+async function runInsideTrackRace() {
+  if (horseRaceRunning) return;
+  horseRaceRunning = true;
+  const btn = document.getElementById('horse-race-btn');
+  const resultDiv = document.getElementById('horse-result');
+  const bet = parseFloat(document.getElementById('horse-bet').value || '0');
+  const pick = parseInt(document.getElementById('horse-pick').value, 10);
+  btn.disabled = true;
+  btn.textContent = '🏇 RACING...';
+  resultDiv.innerHTML = '<div class="result-box result-pending">Horses are at the gate...</div>';
+
+  const { finishOrder, hash, nonce } = await ProvablyFair.rollHorseRace(insideTrackHorses.length);
+  const winner = finishOrder[0];
+  const trackWidth = Math.max(220, (document.getElementById('race-track')?.clientWidth || 420) - 70);
+
+  finishOrder.forEach((horseIndex, place) => {
+    const runner = document.getElementById('horse-runner-' + horseIndex);
+    if (!runner) return;
+    runner.style.transitionDuration = (2.0 + place * 0.22).toFixed(2) + 's';
+    runner.style.left = (trackWidth - place * 12) + 'px';
+  });
+
+  setTimeout(() => {
+    const pickedWinner = pick === winner;
+    const horse = insideTrackHorses[winner];
+    const payout = pickedWinner ? bet * insideTrackHorses[pick].odds : 0;
+    resultDiv.innerHTML = pickedWinner
+      ? `<div class="result-box result-win">🏆 ${horse.name} wins!<br>You won ${payout.toFixed(4)} ETH<br><small>Nonce ${nonce} • ${hash.slice(0, 16)}...</small></div>`
+      : `<div class="result-box result-lose">🏁 ${horse.name} wins.<br>Your pick: ${insideTrackHorses[pick].name}<br><small>Nonce ${nonce} • ${hash.slice(0, 16)}...</small></div>`;
+    btn.disabled = false;
+    btn.textContent = '🏇 RACE AGAIN';
+    horseRaceRunning = false;
+  }, 3300);
+}
+
 // ===== RESIZE =====
 window.addEventListener('resize', () => {
   app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
@@ -990,65 +1069,6 @@ function hideLegacyEnvironmentPrimitives() {
   console.log('[Assets] Hidden legacy primitive environment entities:', hidden);
 }
 
-function replacePrimitiveSlotsWithGLB() {
-  loadContainerAsset('slot-machine-glb', '/assets/models/slot-machine.glb', (slotAsset) => {
-    loadContainerAsset('slot-jackpot-glb', '/assets/models/slot-jackpot.glb', (jackpotAsset) => {
-      for (const info of slotPrimitiveGroups) {
-        const asset = (info.variant % 2 === 0) ? slotAsset : jackpotAsset;
-        info.entity.enabled = false;
-        const model = instantiateContainer(
-          asset,
-          'glb-slot-' + info.variant,
-          [info.x, 0.05, info.z],
-          [0, info.rotY + 180, 0],
-          [1.35, 1.35, 1.35]
-        );
-        if (model) glbSlotEntities.push(model);
-      }
-      console.log('[Assets] Replaced', glbSlotEntities.length, 'primitive slots with GLB models');
-    });
-  });
-}
-
-function replaceCardTablesWithGLB() {
-  loadContainerAsset('blackjack-table-glb', '/assets/models/blackjack-table.glb', (tableAsset) => {
-    let n = 0;
-    for (const info of cardTablePrimitiveGroups) {
-      info.entity.enabled = false;
-      const model = instantiateContainer(
-        tableAsset,
-        'glb-card-table-' + info.label + '-' + n,
-        [info.x, 0.02, info.z],
-        [0, info.label === 'PKR' ? 180 : 0, 0],
-        [1.15, 1.15, 1.15]
-      );
-      if (model) n++;
-    }
-    console.log('[Assets] Replaced', n, 'primitive card tables with GLB blackjack/poker tables');
-  });
-}
-
-function addInsideTrackHorseModels() {
-  loadContainerAsset('horse-low-poly-glb', '/assets/models/horse-low-poly.glb', (horseAsset) => {
-    const colors = [matGlowRed, matGlowBlue, matGlowGold, matGlowPink, matGlowGreen, matGlowWhite];
-    for (let i = 0; i < 6; i++) {
-      const x = -7.5 + i * 3;
-      const z = -14.5;
-      const horse = instantiateContainer(
-        horseAsset,
-        'inside-track-horse-' + (i + 1),
-        [x, 0.08, z],
-        [0, 90, 0],
-        [0.75, 0.75, 0.75]
-      );
-      // Add colored lane marker / betting number under each horse.
-      makeBox('horse-lane-' + i, [x, 0.04, z + 1.2], [2.0, 0.04, 0.16], colors[i % colors.length]);
-      makeBox('horse-plinth-' + i, [x, 0.08, z], [1.8, 0.08, 1.0], matDarkWood);
-    }
-    console.log('[Assets] Added 6 Inside Track horse GLB display models');
-  });
-}
-
 function replaceRouletteWithGLB() {
   loadContainerAsset('roulette-table-web-glb', '/assets/models/roulette-table-web.glb', (rouletteAsset) => {
     rou.enabled = false;
@@ -1063,10 +1083,24 @@ function replaceRouletteWithGLB() {
   });
 }
 
+function hidePrototypeGameProps() {
+  // The imported casino scene now provides the visible environment. Do not load
+  // the older slot/card/horse GLBs; keep only interaction points and game logic.
+  let hidden = 0;
+  for (const info of slotPrimitiveGroups) {
+    info.entity.enabled = false;
+    hidden++;
+  }
+  for (const info of cardTablePrimitiveGroups) {
+    info.entity.enabled = false;
+    hidden++;
+  }
+  window.__prototypeGamePropsHiddenCount = hidden;
+  console.log('[Assets] Hidden prototype slot/card props; using imported scene visuals:', hidden);
+}
+
 addFullCasinoSceneGLB();
-replacePrimitiveSlotsWithGLB();
-replaceCardTablesWithGLB();
-addInsideTrackHorseModels();
+hidePrototypeGameProps();
 replaceRouletteWithGLB();
 
 // ===== PERFORMANCE OPTIMIZATION =====
