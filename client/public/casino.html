@@ -563,6 +563,9 @@ luckyWheel.setLocalPosition(0, 0, 17.0);
 luckyWheel.addChild(makeCylinder('lw-base', [0, 0.15, 0], [2, 0.3, 2], matDarkWood));
 luckyWheel.addChild(makeCylinder('lw-pole', [0, 1.0, 0], [0.3, 1.4, 0.3], matGold));
 const luckyWheelSpinRoot = new pc.Entity('lucky-wheel-spin-root');
+// Pivot is the actual center of the edited wheel asset, so prize markers and wheel
+// rotate in place instead of orbiting the whole machine.
+luckyWheelSpinRoot.setLocalPosition(0, 2.32, 0.17);
 luckyWheel.addChild(luckyWheelSpinRoot);
 // Wheel (face forward)
 const wheelSegColors = [
@@ -580,7 +583,7 @@ const luckyWheelPrizeShortLabels = ['50x', 'NFT', '10x', 'BOX', 'VIP', '3x', '2x
 for (let i = 0; i < 8; i++) {
   const angle = (i / 8) * Math.PI * 2;
   const seg = makeBox('lw-seg-' + i,
-    [Math.cos(angle) * wheelRadius * 0.65, 2.0 + Math.sin(angle) * wheelRadius * 0.65, 0.1],
+    [Math.cos(angle) * wheelRadius * 0.65, Math.sin(angle) * wheelRadius * 0.65, -0.07],
     [0.8, 1.2, 0.1],
     wheelSegColors[i]
   );
@@ -588,15 +591,15 @@ for (let i = 0; i < 8; i++) {
   luckyWheelSpinRoot.addChild(seg);
 }
 // Wheel outer ring
-luckyWheelSpinRoot.addChild(makeTorus('lw-ring', [0, 2.0, 0], [wheelRadius * 2, 1, wheelRadius * 2], matGold, [90, 0, 0]));
+luckyWheelSpinRoot.addChild(makeTorus('lw-ring', [0, 0, -0.17], [wheelRadius * 2, 1, wheelRadius * 2], matGold, [90, 0, 0]));
 // Wheel center hub
-luckyWheelSpinRoot.addChild(makeCylinder('lw-hub', [0, 2.0, 0.2], [0.35, 0.15, 0.35], matGold));
+luckyWheelSpinRoot.addChild(makeCylinder('lw-hub', [0, 0, 0.03], [0.35, 0.15, 0.35], matGold));
 const luckyWheelPrizeMarkers = [];
 for (let i = 0; i < 8; i++) {
   const angle = (i / 8) * Math.PI * 2;
   const px = Math.cos(angle) * wheelRadius * 0.78;
-  const py = 2.0 + Math.sin(angle) * wheelRadius * 0.78;
-  const marker = makeBox('lw-prize-marker-' + i, [px, py, 0.46], [0.46, 0.18, 0.08], wheelSegColors[i]);
+  const py = Math.sin(angle) * wheelRadius * 0.78;
+  const marker = makeBox('lw-prize-marker-' + i, [px, py, 0.28], [0.46, 0.18, 0.08], wheelSegColors[i]);
   marker.setLocalEulerAngles(0, 0, (i / 8) * 360);
   luckyWheelSpinRoot.addChild(marker);
   const label = new pc.Entity('lw-prize-label-' + i);
@@ -607,7 +610,7 @@ for (let i = 0; i < 8; i++) {
     outlineThickness: 0.015,
     outlineColor: new pc.Color(1, 0.85, 0)
   });
-  label.setLocalPosition(px - 0.17, py - 0.08, 0.55);
+  label.setLocalPosition(px - 0.17, py - 0.08, 0.36);
   label.setLocalScale(0.8, 0.8, 0.8);
   label.setLocalEulerAngles(0, 0, (i / 8) * 360);
   luckyWheelSpinRoot.addChild(label);
@@ -989,7 +992,6 @@ async function spinLuckyWheelWorld() {
       : 1 + Math.sin((t - 0.82) / 0.18 * Math.PI) * 0.018;
     const spinZ = start + (target - start) * eased;
     luckyWheelSpinRoot.setLocalEulerAngles(0, 0, spinZ);
-    if (luckyWheelGLBWheelEntity) luckyWheelGLBWheelEntity.setLocalEulerAngles(0, 0, spinZ);
     if (t >= 1) {
       app.off('update', spinUpdate);
       if (mi) mi.material = resultMat;
@@ -1184,10 +1186,10 @@ function updateInsideTrackCinematic(elapsed, countdown, duration) {
   const introT = Math.min(1, elapsed / countdown);
   const pulse = Math.sin(elapsed * 1.15) * 0.10;
   const camX = Math.sin(raceT * Math.PI * 2) * 0.18;
-  const camY = 4.75 + pulse;
-  const camZ = -5.35 - introT * 0.55;
+  const camY = 5.15 + pulse;
+  const camZ = -3.25 - introT * 0.35;
   camera.setLocalPosition(camX, camY, camZ);
-  camera.camera.fov = 74 - introT * 4 + Math.sin(raceT * Math.PI) * 1.2;
+  camera.camera.fov = 86 - introT * 3 + Math.sin(raceT * Math.PI) * 1.0;
   const targetX = Math.sin(elapsed * 0.55) * 0.08;
   const targetY = 5.05 + Math.sin(elapsed * 0.9) * 0.04;
   camera.lookAt(targetX, targetY, -15.8);
@@ -1595,22 +1597,33 @@ function instantiateContainerChild(asset, parent, name, pos, rot, scale) {
 }
 
 function replaceLuckyWheelWithGLB() {
-  loadContainerAsset('lucky-wheel-low-poly-spinning-wheel-glb', '/assets/models/lucky-wheel-low-poly-spinning-wheel.glb', (wheelAsset) => {
-    const oldNames = new Set(['lw-seg-0','lw-seg-1','lw-seg-2','lw-seg-3','lw-seg-4','lw-seg-5','lw-seg-6','lw-seg-7','lw-ring','lw-hub']);
-    for (const child of luckyWheelSpinRoot.children || []) {
-      if (oldNames.has(child.name)) child.enabled = false;
-    }
+  const oldNames = new Set(['lw-seg-0','lw-seg-1','lw-seg-2','lw-seg-3','lw-seg-4','lw-seg-5','lw-seg-6','lw-seg-7','lw-ring','lw-hub']);
+  for (const child of luckyWheelSpinRoot.children || []) {
+    if (oldNames.has(child.name)) child.enabled = false;
+  }
+
+  loadContainerAsset('lucky-wheel-stand-edited-glb', '/assets/models/lucky-wheel-stand-edited.glb', (standAsset) => {
     luckyWheelGLBEntity = instantiateContainerChild(
-      wheelAsset,
+      standAsset,
       luckyWheel,
-      'glb-lucky-wheel-low-poly-spinning-wheel',
+      'glb-lucky-wheel-stand-edited-fixed',
       [0, 0.10, 0.20],
       [0, 180, 0],
       [2.35, 2.35, 2.35]
     );
-    luckyWheelGLBWheelEntity = luckyWheelGLBEntity && luckyWheelGLBEntity.findByName('Cylinder_1');
-    if (luckyWheelGLBWheelEntity) luckyWheelGLBWheelEntity.setLocalEulerAngles(0, 0, 0);
-    if (luckyWheelGLBEntity) console.log('[Assets] Replaced Lucky Wheel with GLB stand; rotating child:', !!luckyWheelGLBWheelEntity);
+    if (luckyWheelGLBEntity) console.log('[Assets] Added edited fixed Lucky Wheel stand/pointer');
+  });
+
+  loadContainerAsset('lucky-wheel-wheel-edited-glb', '/assets/models/lucky-wheel-wheel-edited.glb', (wheelAsset) => {
+    luckyWheelGLBWheelEntity = instantiateContainerChild(
+      wheelAsset,
+      luckyWheelSpinRoot,
+      'glb-lucky-wheel-wheel-edited-rotating',
+      [0, 0, 0],
+      [0, 180, 0],
+      [2.35, 2.35, 2.35]
+    );
+    if (luckyWheelGLBWheelEntity) console.log('[Assets] Added edited rotating Lucky Wheel face with centered pivot');
   });
 }
 
