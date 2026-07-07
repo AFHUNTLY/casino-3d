@@ -80,7 +80,7 @@ canvas{display:block;width:100%;height:100%}
 #look-area{position:fixed;bottom:0;right:0;width:50%;height:60%;pointer-events:auto;touch-action:none}
 #mobile-play-btn{position:fixed;right:22px;bottom:210px;display:none;min-width:118px;padding:15px 18px;border-radius:999px;border:1px solid rgba(255,215,0,.55);background:linear-gradient(135deg,#ffd700,#ff9500);color:#080500;font-size:16px;font-weight:900;letter-spacing:.6px;box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 22px rgba(255,215,0,.25);pointer-events:auto;touch-action:manipulation;z-index:111}
 #mobile-play-btn:active{transform:scale(.96)}
-@media (pointer:coarse) and (max-width:1024px){#mobile-controls{display:block} .crosshair{display:none!important} #game-prompt kbd{display:none} #game-prompt{bottom:22%;font-size:14px;padding:9px 16px}}
+@media (pointer:coarse) and (max-width:1024px){#mobile-controls{display:block} .crosshair{display:none!important} #game-prompt kbd{display:none} #game-prompt{bottom:24%;font-size:14px;padding:9px 16px;max-width:82vw;text-align:center} #joystick{left:22px;bottom:82px;width:112px;height:112px} #look-area{width:56%;height:58%;right:0;bottom:0} #mobile-play-btn{right:20px;bottom:172px} #game-modal{align-items:flex-end;padding:10px} #game-modal-box{min-width:0;width:100%;max-width:100%;max-height:78vh;border-radius:16px 16px 10px 10px;padding:20px 16px} #game-modal-title{font-size:20px}.bet-row{flex-direction:column;align-items:flex-start;gap:6px}.bet-row input,.bet-row select{width:100%!important}.btn-primary{padding:14px;font-size:17px}.btn-secondary{padding:13px}}
 </style>
 </head>
 <body>
@@ -664,7 +664,8 @@ function checkNearbyGames() {
     const dx = playerPos.x - game.position.x;
     const dz = playerPos.z - game.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist < game.radius && dist < closestDist) {
+    const effectiveRadius = game.radius * (_isTouchDevice ? 1.35 : 1);
+    if (dist < effectiveRadius && dist < closestDist) {
       closest = game;
       closestDist = dist;
     }
@@ -1454,7 +1455,7 @@ if (isTouch) {
 
 // Apply joystick to movement in update loop
 app.on('update', (dt) => {
-  if (window._joystickVec && (window._joystickVec.x !== 0 || window._joystickVec.y !== 0)) {
+  if (!chatMode && !activeGame && window._joystickVec && (window._joystickVec.x !== 0 || window._joystickVec.y !== 0)) {
     const fwd = camera.forward;
     const right = camera.right;
     const move = new pc.Vec3(0, 0, 0);
@@ -1463,6 +1464,11 @@ app.on('update', (dt) => {
     if (move.lengthSq() > 0) {
       move.normalize().mulScalar(speed * dt);
       camera.translate(move);
+      const pos = camera.getLocalPosition();
+      pos.x = Math.max(CASINO_BOUNDS.minX, Math.min(CASINO_BOUNDS.maxX, pos.x));
+      pos.z = Math.max(CASINO_BOUNDS.minZ, Math.min(CASINO_BOUNDS.maxZ, pos.z));
+      pos.y = PLAYER_SPAWN.y;
+      camera.setLocalPosition(pos);
     }
   }
 });
