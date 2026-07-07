@@ -10,10 +10,12 @@ This project uses free downloadable 3D assets from Sketchfab and other open sour
 | Stylized Jackpot Slot Machine | Burak Özcan | https://sketchfab.com/3d-models/none-cc13049ec275468a9e41e62079da0d4c | CC Attribution | Casino slot rows / variants |
 | Blackjack Table | Ravi Jangid | https://sketchfab.com/3d-models/none-baf7e3cbd14140ca81ea1a79d28fb635 | CC Attribution | Card game area |
 | Low Poly Horse | Ravenlilli | https://sketchfab.com/3d-models/none-482710cb9b0b4020a852ee709abd6cb9 | CC Attribution | Inside Track horse racing |
+| Gameready Casino Scene | Katydid | https://sketchfab.com/3d-models/gameready-casino-scene-685736a30da846b4ad7f2ddb3b9a56fc | Free Standard | Full casino scene test/reference asset |
 
 ## Notes
 
 - Downloaded from Sketchfab API using the model's downloadable archive endpoint.
 - Converted/optimized to GLB using `@gltf-transform/cli`.
 - No NonCommercial or NoDerivatives assets are intentionally used in the integrated build.
+- `Gameready Casino Scene` is currently added as a test/reference asset first; it is Free Standard per Sketchfab API metadata and should be re-checked before production/commercial main-scene use.
 - Additional metadata is stored under `assets_raw/sketchfab/*/meta.json` in the working tree.
