@@ -280,19 +280,16 @@ const RW = 60, RH = 14, RD = 60;
 // X -9.7..9.7, Z -20.3..20.3, Y 0..8.1. Keep all playable items inside this.
 const CASINO_BOUNDS = { minX: -8.9, maxX: 8.9, minZ: -19.5, maxZ: 19.5 };
 const PLAYER_SPAWN = { x: 0, y: 1.7, z: 18.4, yaw: Math.PI };
-const SLOT_LAYOUT = [];
-for (let i = 0; i < 6; i++) {
-  const z = -14 + i * 4.6;
-  SLOT_LAYOUT.push({ x: -7.2, z, rotY: 90, variant: i });
-  SLOT_LAYOUT.push({ x: -5.0, z, rotY: -90, variant: i + 6 });
-  SLOT_LAYOUT.push({ x: 5.0, z, rotY: 90, variant: i + 12 });
-  SLOT_LAYOUT.push({ x: 7.2, z, rotY: -90, variant: i + 18 });
-}
+const SLOT_LAYOUT = [
+  // Keep only two jackpot machines, grouped on the right-side games area.
+  { x: 6.9, z: 15.2, rotY: -90, variant: 0 },
+  { x: 6.9, z: 12.3, rotY: -90, variant: 1 },
+];
 const CARD_TABLE_LAYOUT = [
-  { x: -4.3, z: 6.5, label: 'BJ' },
-  { x: 4.3, z: 6.5, label: 'BJ' },
-  { x: -4.3, z: 12.5, label: 'PKR' },
-  { x: 4.3, z: 12.5, label: 'PKR' },
+  { x: 4.6, z: 5.7, label: 'DICE' },
+  { x: 7.0, z: 5.7, label: 'COIN' },
+  { x: 5.5, z: 9.2, label: 'BJ' },
+  { x: 6.8, z: 1.2, label: 'ROU' },
 ];
 
 // ===== FLOOR (checkered marble) =====
@@ -419,7 +416,7 @@ for (const table of CARD_TABLE_LAYOUT) {
 
 // ===== ROULETTE =====
 const rou = new pc.Entity('roulette');
-rou.setLocalPosition(0, 0, 1.5);
+rou.setLocalPosition(6.8, 0, 1.2);
 rou.addChild(makeCylinder('r-base', [0, 0.5, 0], [1.5, 1.0, 1.5], matDarkWood));
 rou.addChild(makeCylinder('r-wheel', [0, 1.1, 0], [1.2, 0.2, 1.2], makeMat(rgb(0x1a0a04), null, 0, 0.7, 0.3)));
 rou.addChild(makeTorus('r-gold', [0, 1.2, 0], [1.25, 1, 1.25], matGold, [90, 0, 0]));
@@ -429,7 +426,7 @@ rou.addChild(makeBox('r-bet', [0, 0.9, 3], [4.5, 0.1, 2.5], matFelt));
 app.root.addChild(rou);
 
 const rouletteWorldWheel = new pc.Entity('roulette-world-wheel');
-rouletteWorldWheel.setLocalPosition(0, 1.35, 1.5);
+rouletteWorldWheel.setLocalPosition(6.8, 1.35, 1.2);
 rouletteWorldWheel.addChild(makeCylinder('roulette-spin-disc', [0, 0, 0], [0.85, 0.08, 0.85], makeMat(rgb(0x130906), null, 0, 0.6, 0.25)));
 rouletteWorldWheel.addChild(makeTorus('roulette-spin-ring', [0, 0.06, 0], [1.75, 1, 1.75], matGold, [90, 0, 0]));
 rouletteWorldWheel.addChild(makeSphere('roulette-ball', [0.55, 0.18, 0], [0.12, 0.12, 0.12], matGlowWhite));
@@ -440,7 +437,7 @@ app.root.addChild(rouletteWorldWheel);
 // ===== INSIDE TRACK (Horse Racing) =====
 const insideTrackHorsesDraftOdds = [2.1, 3.4, 4.8, 6.2, 8.5, 12.0];
 const track = new pc.Entity('inside-track');
-track.setLocalPosition(0, 0, -15.8);
+track.setLocalPosition(2.6, 0, -15.8);
 
 // Big screen showing odds
 const screenBg = makeBox('it-screen-bg', [0, 5, -0.1], [12, 5, 0.2], makeMat(rgb(0x000000), null, 0, 0, 0.5));
@@ -562,7 +559,7 @@ makeBox('inside-track-zone-strip', [0, 0.12, -10.8], [20, 0.08, 0.18], matGlowGr
 
 // ===== LUCKY WHEEL (GTA V Podium Vehicle style) =====
 const luckyWheel = new pc.Entity('lucky-wheel');
-luckyWheel.setLocalPosition(0, 0, 11.6);
+luckyWheel.setLocalPosition(-5.8, 0, 11.4);
 // Base platform
 luckyWheel.addChild(makeCylinder('lw-base', [0, 0.15, 0], [2, 0.3, 2], matDarkWood));
 luckyWheel.addChild(makeCylinder('lw-pole', [0, 1.0, 0], [0.3, 1.4, 0.3], matGold));
@@ -1040,7 +1037,7 @@ const wheelSegments = [
   { label: '🥇 Jackpot!', color: '#ffff00', multiplier: 100 },
 ];
 
-registerGame('🎡 Lucky Wheel', [0, 0, 11.6], 4, openLuckyWheel, { worldInteract: true });
+registerGame('🎡 Lucky Wheel', [-5.8, 0, 11.4], 4, openLuckyWheel, { worldInteract: true });
 
 let luckyWheelWorldSpinning = false;
 function openLuckyWheel() {
@@ -1109,7 +1106,7 @@ function getInsideTrackPromptText() {
 function getInsideTrackMobileText() {
   return `RACE #${selectedInsideTrackHorse + 1}`;
 }
-registerGame('🏇 Inside Track', [0, 0, -15.8], 5.2, openInsideTrack, {
+registerGame('🏇 Inside Track', [2.6, 0, -15.8], 5.2, openInsideTrack, {
   worldInteract: true,
   promptText: getInsideTrackPromptText,
   mobileText: getInsideTrackMobileText
@@ -1277,7 +1274,7 @@ function updateInsideTrackCinematic(elapsed, countdown, duration) {
   camera.camera.fov = 86 - introT * 3 + Math.sin(raceT * Math.PI) * 1.0;
   const targetX = Math.sin(elapsed * 0.55) * 0.08;
   const targetY = 5.05 + Math.sin(elapsed * 0.9) * 0.04;
-  camera.lookAt(targetX, targetY, -15.8);
+  camera.lookAt(2.6 + targetX, targetY, -15.8);
 }
 
 function endInsideTrackCinematic() {
@@ -1393,10 +1390,10 @@ let diceGLBEntity = null;
 let coinGLBEntity = null;
 let diceGameRunning = false;
 let coinGameRunning = false;
-const diceResultBeacon = makeBox('dice-result-beacon', [-4.3, 1.8, 6.5], [1.4, 0.16, 0.16], matGlowBlue);
-const coinResultBeacon = makeBox('coin-result-beacon', [4.3, 1.8, 6.5], [1.4, 0.16, 0.16], matGlowGold);
-registerGame('🎲 Dice Roll', [-4.3, 0, 6.5], 3.8, openDiceRoll, { worldInteract: true });
-registerGame('🪙 Coin Flip', [4.3, 0, 6.5], 3.8, openCoinFlip, { worldInteract: true });
+const diceResultBeacon = makeBox('dice-result-beacon', [4.6, 1.8, 5.7], [1.4, 0.16, 0.16], matGlowBlue);
+const coinResultBeacon = makeBox('coin-result-beacon', [7.0, 1.8, 5.7], [1.4, 0.16, 0.16], matGlowGold);
+registerGame('🎲 Dice Roll', [4.6, 0, 5.7], 3.8, openDiceRoll, { worldInteract: true });
+registerGame('🪙 Coin Flip', [7.0, 0, 5.7], 3.8, openCoinFlip, { worldInteract: true });
 
 function animateEntitySpin(entity, duration, axis, totalDegrees, onDone) {
   let elapsed = 0;
@@ -1452,7 +1449,7 @@ async function openCoinFlip() {
 }
 
 // ===== GAME 6: BLACKJACK =====
-registerGame('🃏 Blackjack', [-4.3, 0, 12.5], 4.2, openBlackjack);
+registerGame('🃏 Blackjack', [5.5, 0, 9.2], 4.2, openBlackjack);
 let blackjackState = null;
 
 function cardLabel(card) {
@@ -1535,7 +1532,7 @@ function blackjackStand() {
 
 // ===== GAME 7: ROULETTE =====
 const rouletteRedNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
-registerGame('🎲 Roulette', [0, 0, 1.5], 4.2, openRoulette, { worldInteract: true });
+registerGame('🎲 Roulette', [6.8, 0, 1.2], 4.2, openRoulette, { worldInteract: true });
 
 let rouletteWorldSpinning = false;
 function openRoulette() {
@@ -1728,7 +1725,7 @@ function addBlackjackGLB() {
     const table = instantiateContainer(
       blackjackAsset,
       'glb-blackjack-table',
-      [-4.3, 0.02, 12.5],
+      [5.5, 0.02, 9.2],
       [0, 180, 0],
       [1.25, 1.25, 1.25]
     );
@@ -1741,7 +1738,7 @@ function addDiceAndCoinGLBs() {
     diceGLBEntity = instantiateContainer(
       diceAsset,
       'glb-dice-casino-chips',
-      [-4.3, 0.92, 6.5],
+      [4.6, 0.92, 5.7],
       [0, -25, 0],
       [9.5, 9.5, 9.5]
     );
@@ -1751,7 +1748,7 @@ function addDiceAndCoinGLBs() {
     coinGLBEntity = instantiateContainer(
       coinAsset,
       'glb-low-poly-gold-coin',
-      [4.3, 1.05, 6.5],
+      [7.0, 1.05, 5.7],
       [90, 0, 0],
       [0.34, 0.34, 0.34]
     );
@@ -1765,7 +1762,7 @@ function replaceRouletteWithGLB() {
     const model = instantiateContainer(
       rouletteAsset,
       'glb-roulette-table',
-      [0, -0.40, 1.5],
+      [6.8, -0.40, 1.2],
       [0, 0, 0],
       [0.9, 0.9, 0.9]
     );
@@ -1777,10 +1774,7 @@ function hidePrototypeGameProps() {
   // The imported casino scene now provides the visible environment. Do not load
   // the older slot/card/horse GLBs; keep only interaction points and game logic.
   let hidden = 0;
-  for (const info of slotPrimitiveGroups) {
-    info.entity.enabled = false;
-    hidden++;
-  }
+  // Keep the two curated jackpot machines visible; hide only old primitive card tables.
   for (const info of cardTablePrimitiveGroups) {
     info.entity.enabled = false;
     hidden++;
