@@ -500,7 +500,9 @@ luckyWheel.setLocalPosition(0, 0, 17.0);
 // Base platform
 luckyWheel.addChild(makeCylinder('lw-base', [0, 0.15, 0], [2, 0.3, 2], matDarkWood));
 luckyWheel.addChild(makeCylinder('lw-pole', [0, 1.0, 0], [0.3, 1.4, 0.3], matGold));
-// Wheel (cylinder face forward)
+const luckyWheelSpinRoot = new pc.Entity('lucky-wheel-spin-root');
+luckyWheel.addChild(luckyWheelSpinRoot);
+// Wheel (face forward)
 const wheelSegColors = [
   makeMat(rgb(0x000000), rgb(0xff0000), 1.5, 0, 0.3),   // 0 red
   makeMat(rgb(0x000000), rgb(0x00aa00), 1.5, 0, 0.3),   // 1 green
@@ -520,12 +522,12 @@ for (let i = 0; i < 8; i++) {
     wheelSegColors[i]
   );
   seg.setLocalEulerAngles(0, 0, (i / 8) * 360 + 22.5);
-  luckyWheel.addChild(seg);
+  luckyWheelSpinRoot.addChild(seg);
 }
 // Wheel outer ring
-luckyWheel.addChild(makeTorus('lw-ring', [0, 2.0, 0], [wheelRadius * 2, 1, wheelRadius * 2], matGold, [90, 0, 0]));
+luckyWheelSpinRoot.addChild(makeTorus('lw-ring', [0, 2.0, 0], [wheelRadius * 2, 1, wheelRadius * 2], matGold, [90, 0, 0]));
 // Wheel center hub
-luckyWheel.addChild(makeCylinder('lw-hub', [0, 2.0, 0.2], [0.35, 0.15, 0.35], matGold));
+luckyWheelSpinRoot.addChild(makeCylinder('lw-hub', [0, 2.0, 0.2], [0.35, 0.15, 0.35], matGold));
 // Pointer at top
 luckyWheel.addChild(makeBox('lw-pointer', [0, 3.8, 0.4], [0.2, 0.3, 0.1], matGold, [0, 0, 180]));
 // Sign
@@ -845,56 +847,43 @@ const wheelSegments = [
   { label: '🥇 Jackpot!', color: '#ffff00', multiplier: 100 },
 ];
 
-registerGame('🎡 Lucky Wheel', [0, 0, 15], 4, openLuckyWheel);
+registerGame('🎡 Lucky Wheel', [0, 0, 17.0], 4, openLuckyWheel, { worldInteract: true });
 
+let luckyWheelWorldSpinning = false;
 function openLuckyWheel() {
-  setModalSub('Spin the wheel once per day • Provably Fair');
-  setModalContent(`
-    <div style="text-align:center">
-      <div style="width:200px;height:200px;margin:0 auto 16px;position:relative">
-        ${wheelSegments.map((seg, i) => {
-          const angle = (i / 8) * 360;
-          return `<div style="position:absolute;top:50%;left:50%;width:80px;height:100px;background:${seg.color};transform-origin:bottom center;transform:translate(-50%,-100%) rotate(${angle}deg);border-radius:8px 8px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8)">${seg.label.split(' ')[0]}</div>`;
-        }).join('')}
-        <div style="position:absolute;top:-15px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:20px solid #ffd700;z-index:10"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:30px;background:#ffd700;border-radius:50%;z-index:5"></div>
-      </div>
-      <div id="wheel-result"></div>
-      <button class="btn-primary" id="wheel-spin">🎡 SPIN THE WHEEL</button>
-      <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
-    </div>
-  `);
-  document.getElementById('wheel-spin').addEventListener('click', spinLuckyWheel);
+  spinLuckyWheelWorld();
 }
 
-let wheelSpinning = false;
-async function spinLuckyWheel() {
-  if (wheelSpinning) return;
-  wheelSpinning = true;
-  const btn = document.getElementById('wheel-spin');
-  btn.disabled = true;
-  btn.textContent = '🎡 SPINNING...';
-  document.getElementById('wheel-result').innerHTML = '<div class="result-box result-pending">🎲 Provably fair roll...</div>';
-
-  // Get provably fair result
-  const { segment } = await ProvablyFair.rollWheel(8);
+async function spinLuckyWheelWorld() {
+  if (luckyWheelWorldSpinning) return;
+  luckyWheelWorldSpinning = true;
+  const { segment, hash, nonce } = await ProvablyFair.rollWheel(8);
   const win = wheelSegments[segment];
+  const resultMat = win.multiplier >= 25 ? matGlowGold : win.multiplier >= 10 ? matGlowGreen : matGlowBlue;
+  const sign = luckyWheel.findByName('lw-sign');
+  const mi = sign && sign.model && sign.model.meshInstances[0];
+  if (mi) mi.material = matGlowWhite;
 
-  // Animate the spin with CSS
-  const wheelContainer = document.querySelector('#game-modal-content > div > div:first-child');
-  const targetRotation = 360 * 5 + (segment / 8) * 360; // 5 full spins + segment
-  if (wheelContainer) {
-    wheelContainer.style.transition = 'transform 3s cubic-bezier(0.17, 0.67, 0.12, 0.99)';
-    wheelContainer.style.transform = `rotate(${targetRotation}deg)`;
-  }
-
-  setTimeout(() => {
-    wheelSpinning = false;
-    btn.disabled = false;
-    btn.textContent = '🎡 SPIN AGAIN';
-    document.getElementById('wheel-result').innerHTML =
-      `<div class="result-box result-win">🎉 ${win.label}<br>+${win.multiplier}x multiplier!</div>`;
-  }, 3100);
+  const start = luckyWheelSpinRoot.getLocalEulerAngles().z;
+  const target = start + 360 * 6 + (segment / 8) * 360;
+  let elapsed = 0;
+  const duration = 3.2;
+  const spinUpdate = (dt) => {
+    elapsed += dt;
+    const t = Math.min(1, elapsed / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    luckyWheelSpinRoot.setLocalEulerAngles(0, 0, start + (target - start) * eased);
+    if (t >= 1) {
+      app.off('update', spinUpdate);
+      if (mi) mi.material = resultMat;
+      console.log('[Lucky Wheel 3D]', { segment, prize: win.label, nonce, hash: hash.slice(0, 16) });
+      setTimeout(() => {
+        activeGame = null;
+        luckyWheelWorldSpinning = false;
+      }, 2200);
+    }
+  };
+  app.on('update', spinUpdate);
 }
 
 // ===== GAME 3: INSIDE TRACK (GTA-style Horse Racing) =====
