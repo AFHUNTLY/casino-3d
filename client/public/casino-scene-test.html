@@ -17,8 +17,9 @@ canvas{display:block;width:100%;height:100%}
 <body>
 <canvas id="app"></canvas>
 <div id="hud">
-  <b>Casino Scene Asset Test</b><br>
+  <b>Casino Scene Asset Walk Test</b><br>
   Model: <code>/assets/models/casino-scene-katydid-web.glb</code><br>
+  Controls: WASD walk · mouse drag look · Shift sprint<br>
   Status: <span id="status">booting…</span>
   <div id="error"></div>
 </div>
@@ -46,8 +47,8 @@ app.scene.ambientLight = new pc.Color(0.18,0.16,0.22);
 
 const camera = new pc.Entity('camera');
 camera.addComponent('camera', { clearColor: new pc.Color(0.03,0.03,0.05), fov: 65, farClip: 500 });
-camera.setLocalPosition(0, 5.5, 28);
-camera.lookAt(0, 3, 0);
+camera.setLocalPosition(0, 1.7, 22);
+camera.setLocalEulerAngles(0, 180, 0);
 app.root.addChild(camera);
 
 const light = new pc.Entity('main-light');
@@ -71,6 +72,28 @@ const FIX_POS = new pc.Vec3(-RAW_CENTER.x * SCALE, -RAW_MIN.y * SCALE, -RAW_CENT
 
 app.start();
 setStatus('loading GLB…');
+
+const keys = {};
+let yaw = Math.PI;
+let pitch = 0;
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+const tmpMove = new pc.Vec3();
+document.addEventListener('keydown', (e) => { keys[e.code] = true; });
+document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+canvas.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+document.addEventListener('mouseup', () => { dragging = false; });
+document.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  yaw -= dx * 0.004;
+  pitch -= dy * 0.004;
+  pitch = Math.max(-1.25, Math.min(1.25, pitch));
+});
 
 const asset = new pc.Asset('casino-scene-katydid-web', 'container', { url: '/assets/models/casino-scene-katydid-web.glb' });
 app.assets.add(asset);
@@ -103,12 +126,25 @@ asset.on('error', (err) => {
 });
 app.assets.load(asset);
 
-let t = 0;
 app.on('update', (dt) => {
-  t += dt * 0.18;
-  const r = 30;
-  camera.setLocalPosition(Math.sin(t) * r, 6.2, Math.cos(t) * r);
-  camera.lookAt(0, 3.5, 0);
+  camera.setLocalEulerAngles(pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0);
+  tmpMove.set(0,0,0);
+  const f = camera.forward;
+  const r = camera.right;
+  if (keys.KeyW || keys.ArrowUp) { tmpMove.x += f.x; tmpMove.z += f.z; }
+  if (keys.KeyS || keys.ArrowDown) { tmpMove.x -= f.x; tmpMove.z -= f.z; }
+  if (keys.KeyD || keys.ArrowRight) { tmpMove.x += r.x; tmpMove.z += r.z; }
+  if (keys.KeyA || keys.ArrowLeft) { tmpMove.x -= r.x; tmpMove.z -= r.z; }
+  if (tmpMove.lengthSq() > 0) {
+    const sprint = (keys.ShiftLeft || keys.ShiftRight) ? 2 : 1;
+    tmpMove.normalize().mulScalar(7 * sprint * dt);
+    camera.translate(tmpMove);
+  }
+  const pos = camera.getLocalPosition();
+  pos.y = 1.7;
+  pos.x = Math.max(-30, Math.min(30, pos.x));
+  pos.z = Math.max(-45, Math.min(45, pos.z));
+  camera.setLocalPosition(pos);
 });
 </script>
 </body>
