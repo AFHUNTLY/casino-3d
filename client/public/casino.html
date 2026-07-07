@@ -969,6 +969,65 @@ async function runInsideTrackRace() {
   }, 3300);
 }
 
+// ===== GAME 4: ROULETTE =====
+const rouletteRedNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+registerGame('🎲 Roulette', [0, 0, 1.5], 4.2, openRoulette);
+
+function openRoulette() {
+  setModalSub('European roulette • 0-36 • Provably Fair');
+  setModalContent(`
+    <div style="min-width:min(480px,86vw)">
+      <div style="text-align:center;margin:10px 0 18px">
+        <div id="roulette-wheel-ui" style="width:150px;height:150px;border-radius:50%;margin:0 auto;background:conic-gradient(#0b7a25 0 9.73deg,#111 9.73deg 19.46deg,#b00020 19.46deg 29.19deg,#111 29.19deg 38.92deg,#b00020 38.92deg 48.65deg,#111 48.65deg 58.38deg,#b00020 58.38deg 68.11deg,#111 68.11deg 77.84deg,#b00020 77.84deg 87.57deg,#111 87.57deg 97.3deg,#b00020 97.3deg 107.03deg,#111 107.03deg 116.76deg,#b00020 116.76deg 126.49deg,#111 126.49deg 136.22deg,#b00020 136.22deg 145.95deg,#111 145.95deg 155.68deg,#b00020 155.68deg 165.41deg,#111 165.41deg 175.14deg,#b00020 175.14deg 184.87deg,#111 184.87deg 194.6deg,#b00020 194.6deg 204.33deg,#111 204.33deg 214.06deg,#b00020 214.06deg 223.79deg,#111 223.79deg 233.52deg,#b00020 233.52deg 243.25deg,#111 243.25deg 252.98deg,#b00020 252.98deg 262.71deg,#111 262.71deg 272.44deg,#b00020 272.44deg 282.17deg,#111 282.17deg 291.9deg,#b00020 291.9deg 301.63deg,#111 301.63deg 311.36deg,#b00020 311.36deg 321.09deg,#111 321.09deg 330.82deg,#b00020 330.82deg 340.55deg,#111 340.55deg 350.28deg,#b00020 350.28deg 360deg);border:8px solid #d4af37;box-shadow:0 0 24px rgba(255,215,0,.25);position:relative;transition:transform 2.8s cubic-bezier(.17,.67,.12,.99)">
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:52px;height:52px;border-radius:50%;background:#d4af37;border:3px solid #4a2b00"></div>
+        </div>
+      </div>
+      <div class="bet-row"><label>Bet Amount (ETH)</label><input id="roulette-bet" type="number" value="0.001" min="0.0001" step="0.0001" style="width:130px"/></div>
+      <div class="bet-row"><label>Bet Type</label><select id="roulette-type" style="width:150px"><option value="red">Red 2x</option><option value="black">Black 2x</option><option value="even">Even 2x</option><option value="odd">Odd 2x</option><option value="number">Exact Number 36x</option></select></div>
+      <div class="bet-row" id="roulette-number-row" style="display:none"><label>Number</label><input id="roulette-number" type="number" value="7" min="0" max="36" step="1" style="width:90px"/></div>
+      <div id="roulette-result"></div>
+      <button class="btn-primary" id="roulette-spin-btn">🎲 SPIN ROULETTE</button>
+      <button class="btn-secondary" onclick="closeGameModal()">Close (ESC)</button>
+    </div>
+  `);
+  const type = document.getElementById('roulette-type');
+  type.addEventListener('change', () => {
+    document.getElementById('roulette-number-row').style.display = type.value === 'number' ? 'flex' : 'none';
+  });
+  document.getElementById('roulette-spin-btn').addEventListener('click', spinRouletteGame);
+}
+
+let rouletteSpinning = false;
+async function spinRouletteGame() {
+  if (rouletteSpinning) return;
+  rouletteSpinning = true;
+  const btn = document.getElementById('roulette-spin-btn');
+  const resultDiv = document.getElementById('roulette-result');
+  const wheel = document.getElementById('roulette-wheel-ui');
+  const bet = parseFloat(document.getElementById('roulette-bet').value || '0');
+  const type = document.getElementById('roulette-type').value;
+  const chosenNumber = Math.max(0, Math.min(36, parseInt(document.getElementById('roulette-number')?.value || '0', 10)));
+  btn.disabled = true;
+  btn.textContent = '🎲 SPINNING...';
+  resultDiv.innerHTML = '<div class="result-box result-pending">Ball is spinning...</div>';
+  const { pocket, hash, nonce } = await ProvablyFair.rollRoulette();
+  const isRed = rouletteRedNumbers.has(pocket);
+  const isBlack = pocket !== 0 && !isRed;
+  const won = (type === 'red' && isRed) || (type === 'black' && isBlack) || (type === 'even' && pocket !== 0 && pocket % 2 === 0) || (type === 'odd' && pocket % 2 === 1) || (type === 'number' && pocket === chosenNumber);
+  const multiplier = type === 'number' ? 36 : 2;
+  if (wheel) wheel.style.transform = `rotate(${360 * 5 + pocket * 17}deg)`;
+  setTimeout(() => {
+    const color = pocket === 0 ? 'green' : isRed ? 'red' : 'black';
+    const payout = won ? bet * multiplier : 0;
+    resultDiv.innerHTML = won
+      ? `<div class="result-box result-win">🎉 ${pocket} ${color.toUpperCase()}<br>You won ${payout.toFixed(4)} ETH (${multiplier}x)<br><small>Nonce ${nonce} • ${hash.slice(0, 16)}...</small></div>`
+      : `<div class="result-box result-lose">🎲 ${pocket} ${color.toUpperCase()}<br>No win this spin.<br><small>Nonce ${nonce} • ${hash.slice(0, 16)}...</small></div>`;
+    btn.disabled = false;
+    btn.textContent = '🎲 SPIN AGAIN';
+    rouletteSpinning = false;
+  }, 2900);
+}
+
 // ===== RESIZE =====
 window.addEventListener('resize', () => {
   app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW, window.innerWidth, window.innerHeight);
