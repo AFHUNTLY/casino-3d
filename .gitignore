@@ -11,3 +11,6 @@ artifacts/
 cache/
 typechain-types/
 .vercel
+
+# Local/raw downloaded Sketchfab source assets are kept on server, not pushed to GitHub
+assets_raw/sketchfab/
